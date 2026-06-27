@@ -8,7 +8,7 @@ SUMMARY_DIR = os.path.join(HERMES_HOME, "memories", "summary")
 LONG_TERM_DIR = os.path.join(HERMES_HOME, "memories", "long_term")
 
 L2_MAX_KB = 100
-L2_KEEP_KB = 90
+L2_OVERFLOW_KB = 10  # 固定溢出量：超MAX后恰好移出10KB
 
 def get_dir_size(path):
     if not os.path.isdir(path): return 0
@@ -28,7 +28,7 @@ def consolidate_l2_to_l3():
     if size <= L2_MAX_KB:
         print(f"  L2: {size:.1f}KB/{L2_MAX_KB}KB ✅")
         return
-    to_remove = int((size - L2_KEEP_KB) * 1024)
+    to_remove = int(L2_OVERFLOW_KB * 1024)
     removed = 0
     for fp, fsize, fname in get_files(SUMMARY_DIR):
         if removed >= to_remove: break

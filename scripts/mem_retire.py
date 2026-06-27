@@ -9,7 +9,7 @@ ARCHIVE_DIR = os.path.join(HERMES_HOME, "memories", "archive")
 INDEX_PATH = os.path.join(ARCHIVE_DIR, "index.md")
 
 L3_MAX_KB = 50
-L3_KEEP_KB = 45
+L3_OVERFLOW_KB = 5   # 固定溢出量：超MAX后恰好移出5KB
 
 def get_dir_size(path):
     if not os.path.isdir(path): return 0
@@ -34,7 +34,7 @@ def retire_l3_to_l4():
     if size <= L3_MAX_KB:
         print(f"  L3: {size:.1f}KB/{L3_MAX_KB}KB ✅")
         return
-    to_remove = int((size - L3_KEEP_KB) * 1024)
+    to_remove = int(L3_OVERFLOW_KB * 1024)
     removed = 0
     for fp, fsize, fname in get_files(LONG_TERM_DIR):
         if removed >= to_remove: break
