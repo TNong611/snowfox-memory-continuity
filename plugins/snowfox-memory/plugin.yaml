@@ -1,0 +1,6 @@
+name: snowfox-memory
+kind: standalone
+version: "1.0.0"
+description: "SnowFox 五级记忆 L1 写入插件 —— post_llm_call 自动将每轮对话写入 memories/recent/"
+hooks:
+  - post_llm_call
