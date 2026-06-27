@@ -25,6 +25,8 @@ tags: [memory, agent-input, hierarchical-memory, continuity, snowfox, hermes]
 ├── recent/             ← L1 近期流（50KB，超限压缩5KB→L2）
 ├── summary/            ← L2 中期摘要（100KB，超限合并10KB→L3）
 ├── long_term/          ← L3 长期记忆（50KB，超限退役5KB→L4）
+├── user/               ← USER 自我认知（独立模块，不参与压缩）
+│   └── profile.md
 ├── archive/            ← L4 归档区（不限，索引可查）
 └── _assembled_context.md  ← 组装后的上下文（每轮加载）
 ```
@@ -74,6 +76,8 @@ os.remove(os.path.expanduser(
 [System Prompt] ──────────→ 系统提示（固定指令）
                                 
 [F0 固定记忆] ──────────→ memories/fixed/    10KB，永不压缩
+                                
+[USER 自我认知] ────────→ memories/user/     独立模块，不压缩不退役
                                 
 [L3 长期记忆] ──────────→ memories/long_term/ 50KB，超限退役5KB
          ↑
