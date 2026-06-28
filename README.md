@@ -12,31 +12,32 @@ SnowFox 的五级记忆架构让 AI 不用把整段历史对话都塞进上下�
 
 ## 核心组件
 
-| 层级 | 容量 | 超限后 | 内容 |
-|------|------|--------|------|
-| **F0** 固定记忆 | 10KB | 永不压缩 | 用户嘱咐的待办/要记住的事 |
-| **L1** 近期流 | 50KB | 移最旧 5KB → L2 | 最近几轮完整对话 |
-| **L2** 中期摘要 | 100KB | 移最旧 10KB → L3 | 压缩后的对话摘要 |
-| **L3** 长期记忆 | 50KB | 移最旧 5KB → L4 | 跨会话的核心知识 |
-| **USER** 自我认知 | 独立 | 不压缩不退役 | 你是谁（用户身份/偏好/环境） |
-| **L4** 退役记忆 | 无限 | 已归档，不载入 | 不再活跃的历史记录 |
+| 层级 | 文件 | 容量 | 超限后 | 内容 |
+|------|------|------|--------|------|
+| **SOUL** | SOUL.md | — | — | 系统行为规范（含"禁止 read_file"） |
+| **USER** | user.md | 独立 | 不压缩 | 用户身份/偏好/环境 |
+| **L4** | archive.md | 无限 | 不载入 | 退役历史归档 |
+| **F0** | fixed.md | 10KB | 永不压缩 | 待办/重要指令 |
+| **L3** | long_term.md | 50KB | 移最旧 5KB → L4 | 跨会话核心知识 |
+| **L2** | summary.md | 100KB | 移最旧 10KB → L3 | 压缩后摘要 |
+| **L1** | recent.md | 50KB | 移最旧 5KB → L2 | 最近完整对话 |
 
 ## 目录结构
 
 ```
 snowfox-memory-continuity/
-├── SKILL.md                         ← 面向 AI Agent 的一键部署 skill（v3.0.0）
+├── SKILL.md                         ← 面向 AI Agent 的一键部署 skill（v4.0.0）
 ├── README.md                        ← 本文档
 ├── 文章.md                           ← 面向人类的通俗讲解
 ├── plugins/
-│   └── snowfox-memory/              ← L1 写入插件（post_llm_call 钩子）
-│       ├── plugin.yaml              ← 插件定义
-│       └── __init__.py              ← 每一轮自动写入 L1 存储
+│   └── snowfox-memory/              ← L1 写入 + 内联组装插件（pre/post/session_end 三钩子）
+│       ├── plugin.yaml              ← 插件定义（声明三钩子）
+│       └── __init__.py              ← 内联组装 + 写入 + CJK 防重
 └── scripts/
-    ├── mem_compress.py              ← L1→L2 压缩
-    ├── mem_consolidate.py           ← L2→L3 合并
-    ├── mem_retire.py                ← L3→L4 退役 + 索引
-    └── memory_maintenance.py        ← 三合一 + 组装上下文（cron 入口）
+    ├── mem_compress.py              ← L1→L2 压缩（recent.md → summary.md）
+    ├── mem_consolidate.py           ← L2→L3 合并（summary.md → long_term.md）
+    ├── mem_retire.py                ← L3→L4 退役（long_term.md → archive.md）
+    └── memory_maintenance.py        ← 三合一入口（cron 调用）
 ```
 
 ## 快速部署

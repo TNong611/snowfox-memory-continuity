@@ -1,79 +1,78 @@
 """Run memory maintenance and assemble context.
-Pure Python - no batch, no bash, no external deps.
-"""
-import os, json, sys
+Single-file memory hierarchy with unique build timestamps.
+Solves the Hermes read_file dedup loop: every rebuild has a different
+build timestamp in the header, so read_file always returns fresh content."""
+import os, sys
 from pathlib import Path
 from datetime import datetime
 
-HERMES = Path(os.environ.get('HERMES_HOME', Path.home() / 'AppData' / 'Local' / 'hermes'))
-SCRIPTS = HERMES / 'scripts'
+M = Path(os.environ.get("HERMES_HOME", Path.home() / "AppData" / "Local" / "hermes")) / "memories"
+SCRIPTS = Path(os.environ.get("HERMES_HOME", Path.home() / "AppData" / "Local" / "hermes")) / "scripts"
 
 def run_script(name):
-    """Run a memory maintenance script and capture output/errors."""
-    script = SCRIPTS / name
-    if not script.exists():
-        print(f"WARN: {script} not found, skipping")
-        return
-    result = os.popen(f'"{sys.executable}" "{script}" 2>&1').read()
-    print(f"[{name}] {result[:200].strip()}")
+    s = SCRIPTS / name
+    if not s.exists():
+        print(f"WARN: {s} not found"); return
+    r = os.popen(f'"{sys.executable}" "{s}" 2>&1').read()
+    print(f"[{name}] {r[:200].strip()}")
+
+def read_md(filepath, heading=""):
+    p = M / filepath
+    if not p.exists(): return ""
+    c = p.read_text(encoding="utf-8")
+    return f"{heading}\n{c}" if heading else c
+
+def read_md_sections(filepath, limit_kb=0, section_chars=0):
+    p = M / filepath
+    if not p.exists(): return ""
+    content = p.read_text(encoding="utf-8")
+    if content.strip().startswith("# "):
+        parts = content.split("\n## ", 1)
+        header = parts[0] if len(parts) > 1 else ""
+        body = ("## " + parts[1]) if len(parts) > 1 else content
+    else:
+        header = ""
+        body = content
+    sections = body.split("\n## ")
+    if section_chars > 0:
+        sections = [s[:section_chars] for s in sections]
+    if limit_kb > 0:
+        target = int(limit_kb * 1024)
+        kept = []; total = 0
+        for s in reversed(sections):
+            if total + len(s.encode("utf-8")) > target: break
+            kept.insert(0, s)
+            total += len(s.encode("utf-8"))
+        sections = kept
+    return "\n".join(sections)
 
 def assemble_context():
-    """Assemble _assembled_context.md from SOUL + F0 + L3 + USER + L2 + L1."""
+    """Build _assembled_context.md with version header.
+    The build timestamp ensures every rebuild produces unique content,
+    preventing the Hermes read_file dedup loop."""
     parts = []
-    
-    # SOUL
-    soul = HERMES / 'SOUL.md'
-    if soul.exists():
-        parts.append(f'## self\n{soul.read_text(encoding="utf-8")}')
-    
-    # F0 fixed memory
-    fixed_dir = HERMES / 'memories' / 'fixed'
-    if fixed_dir.exists():
-        f0_files = sorted(fixed_dir.glob('*.md'), key=lambda f: f.stat().st_mtime)
-        if f0_files:
-            total = sum(f.stat().st_size for f in f0_files)
-            content = '\n'.join(f.read_text(encoding='utf-8') for f in f0_files)
-            parts.append(f'## F0 [{total//1024}KB/10KB]\n{content}')
-    
-    # L3 long-term (all .md in long_term/, full content; MEMORY.md already moved there)
-    l3_dir = HERMES / 'memories' / 'long_term'
-    if l3_dir.exists():
-        l3_files = sorted(l3_dir.glob('*.md'), key=lambda f: f.stat().st_mtime)
-        if l3_files:
-            l3_content = '\n---\n'.join(f.read_text(encoding='utf-8') for f in l3_files)
-            parts.append(f'## L3\n{l3_content}')
-    
-    # USER profile
-    user_file = HERMES / 'memories' / 'user' / 'profile.md'
-    if user_file.exists():
-        parts.append(f'## USER\n{user_file.read_text(encoding="utf-8")}')
-    
-    # L2 summary (last 10 files, 300 chars each)
-    l2_dir = HERMES / 'memories' / 'summary'
-    if l2_dir.exists():
-        l2_files = sorted(l2_dir.glob('*.md'), key=lambda f: f.stat().st_mtime)[-10:]
-        if l2_files:
-            l2_content = '\n---\n'.join(f.read_text(encoding='utf-8')[:300] for f in l2_files)
-            parts.append(f'## L2\n{l2_content}')
-    
-    # L1 recent (last 6 files, full content)
-    l1_dir = HERMES / 'memories' / 'recent'
-    if l1_dir.exists():
-        l1_files = sorted(l1_dir.glob('*.md'), key=lambda f: f.stat().st_mtime)[-6:]
-        if l1_files:
-            l1_content = '\n'.join(f.read_text(encoding='utf-8') for f in l1_files)
-            parts.append(f'## L1\n{l1_content}')
-    
-    # Write assembled context
-    out = HERMES / 'memories' / '_assembled_context.md'
-    text = '\n\n'.join(parts)
-    out.write_text(text, encoding='utf-8')
-    print(f'OK: {out.name} {len(text)}B')
+    build_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
+    parts.append(f'<!-- SnowFox Memory Assembly | built: {build_ts} -->')
+    parts.append("")
+    s = read_md("../SOUL.md", "## self")
+    if s: parts.append(s)
+    s = read_md("fixed.md", "## F0")
+    if s: parts.append(s)
+    s = read_md("long_term.md", "## L3")
+    if s: parts.append(s)
+    s = read_md("user.md", "## USER")
+    if s: parts.append(s)
+    s = read_md_sections("summary.md", limit_kb=90, section_chars=150)
+    if s: parts.append(f"## L2\n{s}")
+    s = read_md("recent.md", "## L1")
+    if s: parts.append(s)
+    out = M / "_assembled_context.md"
+    text = "\n\n".join(parts)
+    out.write_text(text, encoding="utf-8")
+    print(f"OK: {out.name} {len(text)}B (build: {build_ts})")
 
-if __name__ == '__main__':
-    # Step 1-3: compression
-    run_script('mem_compress.py')
-    run_script('mem_consolidate.py')
-    run_script('mem_retire.py')
-    # Step 4: assemble
+if __name__ == "__main__":
+    run_script("mem_compress.py")
+    run_script("mem_consolidate.py")
+    run_script("mem_retire.py")
     assemble_context()

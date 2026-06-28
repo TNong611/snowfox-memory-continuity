@@ -1,52 +1,53 @@
-#!/usr/bin/env python3
-"""L3 → L4: 退役长期记忆到归档区"""
-import os, shutil
+"""L3->L4: retire oldest sections from long_term.md to archive.md."""
+import os
 from datetime import datetime
+HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+L3 = HH + "/memories/long_term.md"
+L4 = HH + "/memories/archive.md"
+MAX_KB = 50; OVER_KB = 5
 
-HERMES_HOME = os.path.join(os.environ["USERPROFILE"], "AppData", "Local", "hermes")
-LONG_TERM_DIR = os.path.join(HERMES_HOME, "memories", "long_term")
-ARCHIVE_DIR = os.path.join(HERMES_HOME, "memories", "archive")
-INDEX_PATH = os.path.join(ARCHIVE_DIR, "index.md")
+def parse(content):
+    lines = content.split("\n")
+    hdr = ""; secs = []; cur = []; inHdr = True
+    for line in lines:
+        if inHdr:
+            if line.startswith("# ") or line.startswith("_") or line.strip() == "" or line == "---":
+                hdr += line + "\n"; continue
+            else: inHdr = False
+        if line.startswith("## ") and not line.startswith("### "):
+            if cur: secs.append("\n".join(cur))
+            cur = [line]
+        else: cur.append(line)
+    if cur: secs.append("\n".join(cur))
+    return hdr, secs
 
-L3_MAX_KB = 50
-L3_OVERFLOW_KB = 5   # 固定溢出量：超MAX后恰好移出5KB
-
-def get_dir_size(path):
-    if not os.path.isdir(path): return 0
-    return sum(os.path.getsize(os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f))) / 1024
-
-def get_files(path):
-    files = []
-    for f in os.listdir(path):
-        fp = os.path.join(path, f)
-        if os.path.isfile(fp):
-            files.append((fp, os.path.getsize(fp), f))
-    files.sort(key=lambda x: os.path.getmtime(x[0]))
-    return files
-
-def update_index(fname, summary=""):
-    date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    with open(INDEX_PATH, "a", encoding="utf-8") as f:
-        f.write(f"| {date} | {fname} | {summary[:30]}... |\n")
-
-def retire_l3_to_l4():
-    size = get_dir_size(LONG_TERM_DIR)
-    if size <= L3_MAX_KB:
-        print(f"  L3: {size:.1f}KB/{L3_MAX_KB}KB ✅")
-        return
-    to_remove = int(L3_OVERFLOW_KB * 1024)
-    removed = 0
-    for fp, fsize, fname in get_files(LONG_TERM_DIR):
-        if removed >= to_remove: break
-        try:
-            with open(fp, "r") as f: summary = f.read()[:50]
-        except: summary = ""
-        dst = os.path.join(ARCHIVE_DIR, f"archived_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{fname}")
-        shutil.move(fp, dst)
-        update_index(fname, summary)
-        removed += fsize
-        print(f"  📦 L3→L4: {fname} ({fsize/1024:.1f}KB)")
-    print(f"  ✅ L3退役: 移出 {removed/1024:.1f}KB, 剩余 {get_dir_size(LONG_TERM_DIR):.1f}KB")
+def retire():
+    if not os.path.exists(L3):
+        print("  L3: not found"); return
+    sz = os.path.getsize(L3) / 1024
+    if sz <= MAX_KB:
+        print(f"  L3: {sz:.1f}KB/{MAX_KB}KB OK"); return
+    content = open(L3, "r", encoding="utf-8").read()
+    hdr, secs = parse(content)
+    if not secs: print("  L3: no sections"); return
+    target = int(OVER_KB * 1024)
+    removed = 0; keep = list(secs); taken = []
+    for sec in secs:
+        if removed >= target: break
+        taken.append(sec); removed += len(sec.encode("utf-8"))
+        keep.pop(0)
+    open(L3, "w", encoding="utf-8").write(hdr + "\n".join(keep))
+    # Append to archive.md
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if not os.path.exists(L4):
+        with open(L4, "w", encoding="utf-8") as f:
+            f.write("# L4 Archive — 退役记忆归档\n\n---\n\n")
+    with open(L4, "a", encoding="utf-8") as f:
+        for s in taken:
+            f.write(f"\n## {now} | retired-from-L3\n\n{s}\n\n---\n")
+    ns = os.path.getsize(L3) / 1024
+    print(f"  L3->L4: retired {len(taken)} entries ({removed/1024:.1f}KB), remaining {ns:.1f}KB")
+    print("  OK L3 retirement")
 
 if __name__ == "__main__":
-    retire_l3_to_l4()
+    retire()

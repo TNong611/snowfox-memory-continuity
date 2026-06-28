@@ -1,42 +1,53 @@
-#!/usr/bin/env python3
-"""L2 → L3: 合并中期摘要到长期记忆"""
-import os, shutil
+"""L2->L3: consolidate oldest sections from summary.md to long_term.md."""
+import os
 from datetime import datetime
+HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+SUM = HH + "/memories/summary.md"
+L3 = HH + "/memories/long_term.md"
+MAX_KB = 100; OVER_KB = 10
 
-HERMES_HOME = os.path.join(os.environ["USERPROFILE"], "AppData", "Local", "hermes")
-SUMMARY_DIR = os.path.join(HERMES_HOME, "memories", "summary")
-LONG_TERM_DIR = os.path.join(HERMES_HOME, "memories", "long_term")
+def parse(content):
+    lines = content.split("\n")
+    hdr = ""; secs = []; cur = []; inHdr = True
+    for line in lines:
+        if inHdr:
+            if line.startswith("# ") or line.startswith("_") or line.strip() == "" or line == "---":
+                hdr += line + "\n"; continue
+            else: inHdr = False
+        if line.startswith("## ") and not line.startswith("### "):
+            if cur: secs.append("\n".join(cur))
+            cur = [line]
+        else: cur.append(line)
+    if cur: secs.append("\n".join(cur))
+    return hdr, secs
 
-L2_MAX_KB = 100
-L2_OVERFLOW_KB = 10  # 固定溢出量：超MAX后恰好移出10KB
-
-def get_dir_size(path):
-    if not os.path.isdir(path): return 0
-    return sum(os.path.getsize(os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f))) / 1024
-
-def get_files(path):
-    files = []
-    for f in os.listdir(path):
-        fp = os.path.join(path, f)
-        if os.path.isfile(fp):
-            files.append((fp, os.path.getsize(fp), f))
-    files.sort(key=lambda x: os.path.getmtime(x[0]))
-    return files
-
-def consolidate_l2_to_l3():
-    size = get_dir_size(SUMMARY_DIR)
-    if size <= L2_MAX_KB:
-        print(f"  L2: {size:.1f}KB/{L2_MAX_KB}KB ✅")
-        return
-    to_remove = int(L2_OVERFLOW_KB * 1024)
-    removed = 0
-    for fp, fsize, fname in get_files(SUMMARY_DIR):
-        if removed >= to_remove: break
-        dst = os.path.join(LONG_TERM_DIR, f"l3_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{fname}")
-        shutil.move(fp, dst)
-        removed += fsize
-        print(f"  🔄 L2→L3: {fname} ({fsize/1024:.1f}KB)")
-    print(f"  ✅ L2合并: 移出 {removed/1024:.1f}KB, 剩余 {get_dir_size(SUMMARY_DIR):.1f}KB")
+def consolidate():
+    if not os.path.exists(SUM):
+        print("  L2: not found"); return
+    sz = os.path.getsize(SUM) / 1024
+    if sz <= MAX_KB:
+        print(f"  L2: {sz:.1f}KB/{MAX_KB}KB OK"); return
+    content = open(SUM, "r", encoding="utf-8").read()
+    hdr, secs = parse(content)
+    if not secs: print("  L2: no sections"); return
+    target = int(OVER_KB * 1024)
+    removed = 0; keep = list(secs); taken = []
+    for sec in secs:
+        if removed >= target: break
+        taken.append(sec); removed += len(sec.encode("utf-8"))
+        keep.pop(0)
+    open(SUM, "w", encoding="utf-8").write(hdr + "\n".join(keep))
+    # Append to long_term.md
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if not os.path.exists(L3):
+        with open(L3, "w", encoding="utf-8") as f:
+            f.write("# L3 Long-term — 长期记忆\n\n---\n\n")
+    with open(L3, "a", encoding="utf-8") as f:
+        for s in taken:
+            f.write(f"\n## {now} | consolidated-from-L2\n\n{s}\n\n---\n")
+    ns = os.path.getsize(SUM) / 1024
+    print(f"  L2->L3: moved {len(taken)} entries ({removed/1024:.1f}KB), remaining {ns:.1f}KB")
+    print("  OK L2 consolidation")
 
 if __name__ == "__main__":
-    consolidate_l2_to_l3()
+    consolidate()
