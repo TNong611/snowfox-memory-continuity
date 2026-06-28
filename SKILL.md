@@ -1,7 +1,7 @@
 ---
 name: memory-continuity
 description: "SnowFox 五级记忆 - 单文件架构。禁止 read_file 循环。"
-version: 4.0.0
+version: 4.1.0
 author: tnong & 雪狐
 date: 2026-06-28
 tags: [memory, agent-input, hierarchical-memory, single-file, snowfox, hermes]
@@ -22,9 +22,9 @@ tags: [memory, agent-input, hierarchical-memory, single-file, snowfox, hermes]
 | USER | user.md | 独立 |
 | L4 | archive.md | 不限 |
 | F0 | fixed.md | 10KB |
-| L3 | long_term.md | 50KB |
-| L2 | summary.md | 100KB |
-| L1 | recent.md | 50KB |
+| L3 | long_term.md | 45KB |
+| L2 | summary.md | 90KB |
+| L1 | recent.md | 45KB |
 
 ### 组装顺序
 SOUL.md + USER + L4 + F0 + L3 + L2 + L1 + 当前消息
@@ -66,9 +66,9 @@ SOUL.md + USER + L4 + F0 + L3 + L2 + L1 + 当前消息
 | 层级 | 上限 | 超限行为 |
 |------|------|---------|
 | F0 | 10KB | 不压缩 |
-| L1 | 50KB | 截断最旧段至 L2 |
-| L2 | 100KB | 截断最旧段至 L3 |
-| L3 | 50KB | 截断最旧段至 L4 |
+| L1 | 45KB | 截断至 45KB，最旧段移至 L2 |
+| L2 | 90KB | 截断至 90KB，最旧段移至 L3 |
+| L3 | 45KB | 截断至 45KB，最旧段移至 L4 |
 | L4 | 不限 | 不进上下文 |
 | USER | 独立 | 不压缩 |
 
