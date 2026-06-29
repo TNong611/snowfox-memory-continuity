@@ -80,7 +80,7 @@ def _rebuild_assembly():
         secs = l2c.split("\n## ")
         kept = []; total = 0; limit = 90 * 1024
         for sec in reversed(secs):
-            st = (secs[0] if sec is secs[0] else "## " + sec)[:150]
+            st = secs[0] if sec is secs[0] else "## " + sec
             bs = len(st.encode("utf-8"))
             if total + bs > limit and total > 0: break
             kept.insert(0, st); total += bs

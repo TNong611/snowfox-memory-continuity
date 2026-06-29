@@ -118,7 +118,7 @@ def _hard_cleanup():
 def _trigger_retire():
     if not os.path.exists(L3):
         return
-    if os.path.getsize(L3) / 1024 > 50:
+    if os.path.getsize(L3) / 1024 > L3_MAX_KB:
         script = HH + "/scripts/mem_retire.py"
         if os.path.exists(script):
             r = subprocess.run([sys.executable, script], capture_output=True, text=True, timeout=30)
@@ -184,9 +184,11 @@ def consolidate():
             skipped_dup += 1
             continue
 
-        # Append without timestamp — just topic header
-        # Derive topic from first line or use a simple prefix
-        topic = "consolidated"
+        # Append without timestamp — extract topic from first meaningful line
+        first_line = cleaned.strip().split('\n')[0][:60] if cleaned.strip() else "summary"
+        for pfx in ["- ", "• ", "关于", "本次", "会话"]:
+            first_line = first_line[len(pfx):] if first_line.startswith(pfx) else first_line
+        topic = first_line if len(first_line) >= 4 else "summary"
         entry = f"## {topic}\n{cleaned}\n"
         with open(L3, "a", encoding="utf-8") as f:
             f.write(entry + "\n")

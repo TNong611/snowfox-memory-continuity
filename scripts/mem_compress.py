@@ -5,7 +5,7 @@ Cascade: if summary.md > 100KB → run consolidate.
 import os, subprocess, sys
 from datetime import datetime
 import requests
-from mem_config import L1_MAX_KB as MAX_KB, L1_KEEP_KB as KEEP_KB
+from mem_config import L1_MAX_KB as MAX_KB, L1_KEEP_KB as KEEP_KB, L2_MAX_KB
 
 HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
 L1 = HH + "/memories/recent.md"
@@ -96,7 +96,7 @@ def parse(content):
 def _trigger_cascade():
     p = HH + "/memories/summary.md"
     if not os.path.exists(p): return
-    if os.path.getsize(p) / 1024 > 100:
+    if os.path.getsize(p) / 1024 > L2_MAX_KB:
         script = HH + "/scripts/mem_consolidate.py"
         if os.path.exists(script):
             r = subprocess.run([sys.executable, script], capture_output=True, text=True, timeout=30)

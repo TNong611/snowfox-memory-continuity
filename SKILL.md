@@ -158,7 +158,7 @@ def _rebuild_assembly():
         secs = l2c.split("\\n## ")
         kept = []; total = 0; limit = 90 * 1024
         for sec in reversed(secs):
-            st = (secs[0] if sec is secs[0] else "## " + sec)[:150]
+            st = secs[0] if sec is secs[0] else "## " + sec
             bs = len(st.encode("utf-8"))
             if total + bs > limit and total > 0: break
             kept.insert(0, st); total += bs
@@ -431,20 +431,16 @@ L1→L2：调用 DeepSeek API 做 LLM 摘要（prompt：压缩为≤300字中文
 
 L2→L3：LLM 二次压缩（≤150字中文，跳过<15字空结果，去重时先去除「同[N]：」前缀再比对，无时间戳）。L3→L4：纯文本搬运（末端，无进一步压缩）。
 
-整个级联链从插件写入开始逐级传递，同时有 cron 每 3 分钟巡检确保不会因钩子异常而漏压。
+整个级联链从插件写入开始逐级传递。cron 仅作为兜底保险（`mem_maintain.py` 每 10 分钟巡检），非必须——插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩。
 
 末端 archive.md 无上限，链终止。
 
-**cron 角色**：`scripts/mem_maintain.py` 逐个串行调用三个脚本（compress→consolidate→retire），`no_agent=true`，每 3 分钟一次。插件钩子+ cron 双保险，既及时又可靠。
-
-**⚠️ cron 不是可选项。** 2026-06-29 发现 `cronjob list` 返回 0，`mem_maintain.py` 从未被调度。L1 膨胀到 61KB，自动压缩从未触发——插件钩子在多工具轮次、进程重启场景下漏检。cron 是记忆维护的**启动器**，不是边缘优化。部署后必须创建：
+**cron 角色（可选）**：`scripts/mem_maintain.py` 逐个串行调用三个脚本（compress→consolidate→retire），`no_agent=true`。插件 `_compress_l1_if_overflow()` 已实现写入时即时检测 + 超限压缩，cron 仅作为钩子漏检的兜底。部署建议：
 
 ```text
 cronjob(action='create', name='snowfox-memory-maintain',
-        schedule='every 3m', script='mem_maintain.py', no_agent=True)
+        schedule='every 10m', script='mem_maintain.py', no_agent=True)
 ```
-
-验证：`cronjob(action='list')` 返回 ≥1 条记录。
 
 ### 第 7 步：创建 `_assembled_context.md`
 
@@ -1020,7 +1016,7 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 
 27. **文档与代码不同步——推前必须审查！**：修改了协议/路径/结构后如果不同步更新 README、文章.md、SKILL.md 的相关描述，下次有人加载 skill 时会拿到与运行系统不一致的说明。**推前审查 checklist：**
 
-28. **L1 压缩是事件驱动 + cron 双重保险。** 插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后检查大小并触发压缩。但钩子触发不完全可靠（多工具轮次、插件进程重启等场景可能漏检）。`mem_maintain.py` cron 每 3 分钟巡检全部三级作为兜底。**cron 不是可选项，是必需的双保险。**
+28. **L1 压缩是事件驱动为主，cron 为兜底。** 插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩。**无漏压风险**——写入即检测。`mem_maintain.py` cron 仅作为进程未重启时的附加保险，每 10 分钟巡检一次即可。**cron 非必需，但建议保留作为兜底。**
 
 29. **容量参数在 `scripts/mem_config.py` 集中管理，不分散在各脚本中。** 调整容量时只改这一个文件，所有消费方（3 脚本 + 1 插件）自动生效。切勿直接去改 `mem_compress.py`/`mem_consolidate.py`/`mem_retire.py` 中的局部变量——它们已全部改为从 `mem_config.py` 导入。
 
