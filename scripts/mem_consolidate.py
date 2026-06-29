@@ -1,13 +1,15 @@
-"""L2->L3: trim oldest from summary.md (if >100KB, trim to 90KB), write to long_term.md.
-Cascade: if long_term.md >50KB -> run retire.
+"""L2→L3: trim oldest from summary.md (if >100KB, trim to 90KB),
+LLM-compress each taken section (skip empty/dedup), write to long_term.md.
+No timestamps in L3. Cascade if L3 >50KB → retire.
 """
-import os, subprocess, sys
-from datetime import datetime
-from mem_config import L2_MAX_KB as MAX_KB, L2_KEEP_KB as KEEP_KB
+import json, os, re, subprocess, sys
+from mem_config import L2_MAX_KB as MAX_KB, L2_KEEP_KB as KEEP_KB, L3_MAX_KB, L3_KEEP_KB
 
-HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+HH = os.environ.get("HERMES_HOME") or os.environ["USERPROFILE"] + "/AppData/Local/hermes"
 SUM = HH + "/memories/summary.md"
 L3 = HH + "/memories/long_term.md"
+AUTH = HH + "/auth.json"
+SCRIPT = HH + "/scripts/mem_compress.py"
 
 
 def parse(content):
@@ -26,10 +28,96 @@ def parse(content):
     return hdr, secs
 
 
+def _get_deepseek_key() -> str:
+    if not os.path.exists(AUTH):
+        raise RuntimeError("auth.json not found")
+    auth = json.load(open(AUTH, "r"))
+    return auth["credential_pool"]["deepseek"][0]["value"]
+
+
+def _llm_summarize(text: str) -> str:
+    """进一步压缩 L2 摘要 → L3 长期记忆，跳过空结果。"""
+    api_key = _get_deepseek_key()
+    prompt = (
+        "你是一个长期记忆蒸馏器。下面是一段已经压缩过的对话摘要。\n"
+        "请进一步提炼为极简版本，只保留最重要的跨会话事实、配置决策和结论。\n"
+        "移除所有临时上下文、讨论过程、仅单次有效的信息。\n"
+        "要求：中文，不超过150字。\n"
+        "如果内容为空或全部无关，请只回复（空）\n\n"
+        + text
+    )
+
+    import urllib.request
+    body = json.dumps({
+        "model": "deepseek-chat",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 200,
+        "temperature": 0.3,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.deepseek.com/v1/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
+    resp = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    result = resp["choices"][0]["message"]["content"].strip()
+    return result
+
+
+def _load_l3_sections() -> list[str]:
+    if not os.path.exists(L3):
+        return []
+    content = open(L3, "r", encoding="utf-8").read()
+    _, secs = parse(content)
+    return secs
+
+
+def _is_duplicate(new_text: str, existing: list[str]) -> bool:
+    """检查是否与已有 L3 内容重复（归一化后比较）。"""
+    norm = re.sub(r"\s+", " ", new_text).strip().lower()
+    if len(norm) < 10:
+        return False
+    for sec in existing:
+        # strip timestamp prefix
+        body = re.sub(r"^## .+\n", "", sec, count=1).strip()
+        enorm = re.sub(r"\s+", " ", body).strip().lower()
+        if norm == enorm or norm in enorm or enorm in norm:
+            return True
+    return False
+
+
+def _hard_cleanup():
+    """If L3 is already > limit after cascade, do a brute-force trim of oldest entries."""
+    if not os.path.exists(L3):
+        return
+    sz = os.path.getsize(L3) / 1024
+    target = L3_KEEP_KB * 1024
+    if sz <= L3_MAX_KB:
+        return
+    content = open(L3, "r", encoding="utf-8").read()
+    hdr, secs = parse(content)
+    if not secs:
+        return
+    # remove oldest until ≤ target
+    keep = list(secs)
+    current = len(content.encode("utf-8"))
+    for sec in secs:
+        if current <= target:
+            break
+        sbytes = len(sec.encode("utf-8"))
+        keep.pop(0)
+        current -= sbytes
+    # write remaining + cascade to retire
+    open(L3, "w", encoding="utf-8").write("".join(keep))
+    print(f"  L3 hard-cleanup: removed {len(secs) - len(keep)} entries, now {os.path.getsize(L3)/1024:.1f}KB (target ≤{L3_KEEP_KB}KB)")
+    _trigger_retire()
+
+
 def _trigger_retire():
-    p = HH + "/memories/long_term.md"
-    if not os.path.exists(p): return
-    if os.path.getsize(p) / 1024 > 50:
+    if not os.path.exists(L3):
+        return
+    if os.path.getsize(L3) / 1024 > 50:
         script = HH + "/scripts/mem_retire.py"
         if os.path.exists(script):
             r = subprocess.run([sys.executable, script], capture_output=True, text=True, timeout=30)
@@ -66,23 +154,52 @@ def consolidate():
     if not taken:
         print(f"  L2: {sz:.1f}KB over limit but no single section fits removal target"); return
 
-    # Write remaining back
+    # Write remaining back to L2
     open(SUM, "w", encoding="utf-8").write(hdr + "\n".join(keep))
-
-    # Append taken to long_term.md
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     removed_bytes = sum(len(s.encode("utf-8")) for s in taken)
-    if not os.path.exists(L3):
-        with open(L3, "w", encoding="utf-8") as f:
-            f.write("# L3 Long-term — 长期记忆\n\n---\n\n")
-    with open(L3, "a", encoding="utf-8") as f:
-        for s in taken:
-            f.write(f"\n## {now} | consolidated-from-L2\n\n{s}\n\n---\n")
+    print(f"  L2: {sz:.1f}KB > {MAX_KB}KB → trimmed {len(taken)} entries ({removed_bytes/1024:.1f}KB)")
+
+    # --- L2→L3 further compression ---
+    existing_l3 = _load_l3_sections()
+    added = 0
+    skipped_empty = 0
+    skipped_dup = 0
+
+    for s in taken:
+        try:
+            compressed = _llm_summarize(s)
+        except Exception as e:
+            print(f"  [LLM error] {e}; appending raw")
+            compressed = s
+
+        # Skip empty
+        cleaned = compressed.replace("（空）", "").replace("(空)", "").strip()
+        if len(cleaned) < 15:
+            skipped_empty += 1
+            continue
+
+        # Skip duplicate
+        if _is_duplicate(cleaned, existing_l3):
+            skipped_dup += 1
+            continue
+
+        # Append without timestamp — just topic header
+        # Derive topic from first line or use a simple prefix
+        topic = "consolidated"
+        entry = f"## {topic}\n{cleaned}\n"
+        with open(L3, "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+        existing_l3.append(cleaned)
+        added += 1
 
     ns = os.path.getsize(SUM) / 1024
-    print(f"  L2: {sz:.1f}KB > {MAX_KB}KB → trimmed {len(taken)} entries ({removed_bytes/1024:.1f}KB)")
-    print(f"  L2→L3: moved {len(taken)} entries, summary.md now={ns:.1f}KB (target ≤{KEEP_KB}KB)")
+    print(f"  L2→L3: added {added}, skipped [{skipped_empty} empty, {skipped_dup} dup], summary.md now={ns:.1f}KB (target ≤{KEEP_KB}KB)")
+
+    # Cascade to retire if L3 over limit
     _trigger_retire()
+
+    # Hard cleanup L3 if still too big after cascade
+    _hard_cleanup()
 
 
 if __name__ == "__main__":
