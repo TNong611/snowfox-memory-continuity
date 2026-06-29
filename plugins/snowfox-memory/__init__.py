@@ -1,5 +1,5 @@
 """SnowFox 五级记忆插件（自包含组装 + post_llm_call 写入 + 超限即压缩）。
-组装顺序：USER → L4 → F0 → L3 → L2 → L1（不含 SOUL，SOUL 已是系统提示）。
+组装顺序：USER → F0 → L3 → L2 → L1（不含 L4，L4 使用语义索引检索）。
 post_llm_call 在每次回复后立即写入 recent.md。
 写入后检查大小，超 50KB 当场触发 L1→L2 压缩。
 """
@@ -15,7 +15,7 @@ def _h(): return Path.home() / "AppData/Local/hermes"
 def _m(): return _h() / "memories"
 
 def _on_plugin_load():
-    logger.info("[snowfox] loaded (order: USER-L4-F0-L3-L2-L1, post_llm, inline+startup compress)")
+    logger.info("[snowfox] loaded (order: USER-F0-L3-L2-L1, post_llm, inline+startup compress, L4=semantic)")
 
 def _run_script(name: str) -> str | None:
     """Run a memory script by name (mem_compress/consolidate/retire), return stdout first line."""
@@ -68,11 +68,9 @@ def _rebuild_assembly():
     build_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
     parts.append(f"<!-- SnowFox Memory Assembly | built: {build_ts} -->")
     parts.append("")
-    # 组装顺序：USER → L4 → F0 → L3 → L2 → L1
+    # 组装顺序：USER → F0 → L3 → L2 → L1（L4 使用语义索引检索）
     s = _read_or(m / "user.md")
     if s: parts.append(f"## USER\n{s}")
-    s = _read_or(m / "archive.md")
-    if s: parts.append(f"## L4\n{s}")
     s = _read_or(m / "fixed.md")
     if s: parts.append(f"## F0\n{s}")
     s = _read_or(m / "long_term.md")

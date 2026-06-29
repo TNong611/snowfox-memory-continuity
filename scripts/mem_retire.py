@@ -70,6 +70,14 @@ def retire():
     print(f"  L3: {sz:.1f}KB > {MAX_KB}KB → trimmed {len(taken)} entries ({removed_bytes/1024:.1f}KB)")
     print(f"  L3→L4: moved {len(taken)} entries, long_term.md now={ns:.1f}KB (target ≤{KEEP_KB}KB)")
 
+    # 重建 L4 语义索引
+    try:
+        import subprocess, sys
+        subprocess.run([sys.executable, HH + "/scripts/l4_index.py"],
+                       cwd=HH, capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        print(f"  [l4_index auto-rebuild]: {e}")
+
 
 if __name__ == "__main__":
     retire()
