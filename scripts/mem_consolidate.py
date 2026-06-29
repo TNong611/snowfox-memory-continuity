@@ -79,8 +79,9 @@ def _is_duplicate(new_text: str, existing: list[str]) -> bool:
     if len(norm) < 10:
         return False
     for sec in existing:
-        # strip timestamp prefix
+        # skip timestamp prefix + "同[N]：" pattern
         body = re.sub(r"^## .+\n", "", sec, count=1).strip()
+        body = re.sub(r"^同\[\d+\][：:]", "", body)
         enorm = re.sub(r"\s+", " ", body).strip().lower()
         if norm == enorm or norm in enorm or enorm in norm:
             return True
