@@ -408,7 +408,7 @@ hermes plugins enable snowfox-memory
 
 ### 第 6 步：级联压缩链（插件钩子 + cron 兜底）
 
-**所有层级采用双保险机制：插件写入时即时触发 + cron 每 3 分钟巡检兜底。**
+**所有层级采用事件驱动（插件写入时）+ cron 可选兜底（每 10 分钟巡检一次）机制。**
 
 ```
 [插件加载] → _startup_check(): 检查所有级别超限
@@ -431,16 +431,9 @@ L1→L2：调用 DeepSeek API 做 LLM 摘要（prompt：压缩为≤300字中文
 
 L2→L3：LLM 二次压缩（≤150字中文，跳过<15字空结果，去重时先去除「同[N]：」前缀再比对，无时间戳）。L3→L4：纯文本搬运（末端，无进一步压缩）。
 
-整个级联链从插件写入开始逐级传递。cron 仅作为兜底保险（`mem_maintain.py` 每 10 分钟巡检），非必须——插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩。
+整个级联链从插件写入开始逐级传递——插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩，无需 cron。
 
 末端 archive.md 无上限，链终止。
-
-**cron 角色（可选）**：`scripts/mem_maintain.py` 逐个串行调用三个脚本（compress→consolidate→retire），`no_agent=true`。插件 `_compress_l1_if_overflow()` 已实现写入时即时检测 + 超限压缩，cron 仅作为钩子漏检的兜底。部署建议：
-
-```text
-cronjob(action='create', name='snowfox-memory-maintain',
-        schedule='every 10m', script='mem_maintain.py', no_agent=True)
-```
 
 ### 第 7 步：创建 `_assembled_context.md`
 
@@ -575,7 +568,7 @@ read_file("~/AppData/Local/hermes/memories/_assembled_context.md")
 
 **核心规则：** 超限后**砍到保留上限**（移出所有超过 MAX_KB KB 的最旧段），不是固定移出量。\nL1 > 50KB → 砍到 45KB，移出段 LLM 摘要→L2\nL2 > 100KB → 砍到 90KB，移出段LLM二次压缩→L3（去空去重去时间戳）\nL3 > 50KB → 砍到 45KB，移出段纯搬运→L4\n\n**⚠️ 触发器 = `MAX_KB`（上限），保持目标 = `KEEP_KB`。** 检查条件是 `if sz <= MAX_KB`（例如 50KB）判断是否无需操作。超 `MAX_KB` 后砍到 ≤`KEEP_KB`（45KB）。二者并不相同——文件在 `KEEP_KB` 和 `MAX_KB` 之间的区间内被视为正常无需压缩。打印信息同时显示两个值：`no action needed (target ≤{KEEP_KB}KB)`。
 
-**⚠️ 全部层级：事件驱动（插件写入时） + cron 每 3 分钟巡检（mem_maintain.py），双保险。**  \nL1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。  \nL2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。  \nL3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。  \n整条链从插件写入开始逐级传递，同时 cron 每 3 分钟跑一次 mem_maintain.py 兜底，防止钩子异常漏压。
+**⚠️ 全部层级：事件驱动（插件写入时即时触发），cron 可选兜底（每 10 分钟巡检）。**  \nL1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。  \nL2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。  \nL3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。  \n整条链从插件写入开始逐级传递，同时 cron 每 10 分钟跑一次 mem_maintain.py 可选兜底。
 
 ## 🧹 定期清理
 
@@ -1016,7 +1009,7 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 
 27. **文档与代码不同步——推前必须审查！**：修改了协议/路径/结构后如果不同步更新 README、文章.md、SKILL.md 的相关描述，下次有人加载 skill 时会拿到与运行系统不一致的说明。**推前审查 checklist：**
 
-28. **L1 压缩是事件驱动为主，cron 为兜底。** 插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩。**无漏压风险**——写入即检测。`mem_maintain.py` cron 仅作为进程未重启时的附加保险，每 10 分钟巡检一次即可。**cron 非必需，但建议保留作为兜底。**
+28. **L1 压缩是事件驱动自触发，无 cron。** 插件在 `_write_recent()` 和 `_on_post_llm_call()` 写入后立即检查大小并触发压缩——写入即检测，无需周期巡检。`_write_pending()` 会写入 pending 条目但不触发压缩，不过下一轮 `post_llm_call` 或 `pre_llm_call` 必然覆盖。
 
 29. **容量参数在 `scripts/mem_config.py` 集中管理，不分散在各脚本中。** 调整容量时只改这一个文件，所有消费方（3 脚本 + 1 插件）自动生效。切勿直接去改 `mem_compress.py`/`mem_consolidate.py`/`mem_retire.py` 中的局部变量——它们已全部改为从 `mem_config.py` 导入。
 
@@ -1061,3 +1054,20 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
     - 总长度 <20 字符的段直接视为空
     - 完成后重新验证文件（`wc -l` + 前几行检查），确保没有漏网之鱼
     - 如果第一遍跑完还有残留，继续第二遍直到完全干净
+
+33. **L3 标签必须从摘要首句提取主题，不能用 `consolidated`**：`mem_consolidate.py` 写入 L3 时，标签由以下算法推导：
+    ```python
+    first_line = cleaned.strip().split('\\n')[0][:60]
+    for pfx in ["- ", "• ", "关于", "本次", "会话"]:
+        first_line = first_line[len(pfx):] if first_line.startswith(pfx) else first_line
+    topic = first_line if len(first_line) > 4 else "summary"
+    ```
+    这使 L3 可按主题检索而非全是 `## consolidated`。如果未来要加退火或聚类标签，改 `mem_consolidate.py` 的这段 `extract topic` 逻辑即可。
+
+34. **记忆系统维护：批量发现 → 自省校验 → 批量修复**：当遇到记忆系统多个结构性问题时，正确的流程是：
+    - 一次性扫描所有相关脚本（compress/consolidate/retire/plugin/SKILL.md/references），发现全部问题
+    - 列给用户确认，但同时对每项自省校验（用户指出的问题中可能部分其实不存在、或已有自动修复机制）
+    - 用户确认后，**一次性提交所有代码修复**（不要一个一个来——用户明确表示"三个代码修一起上"）
+    - 同步修改 SKILL.md 和 references 文件
+    - 部署运行版 + 推 GitHub 一次完成
+    - 最后全面验证所有改动
