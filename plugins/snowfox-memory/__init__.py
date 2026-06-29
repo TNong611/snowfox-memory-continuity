@@ -1,11 +1,13 @@
-"""SnowFox 五级记忆插件（自包含组装 + post_llm_call 写入）。
+"""SnowFox 五级记忆插件（自包含组装 + post_llm_call 写入 + 超限即压缩）。
 组装顺序：USER → L4 → F0 → L3 → L2 → L1（不含 SOUL，SOUL 已是系统提示）。
 post_llm_call 在每次回复后立即写入 recent.md。
+写入后检查大小，超 50KB 当场触发 L1→L2 压缩。
 """
-import logging, re, time, traceback
+import logging, re, time, traceback, subprocess, sys
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+from mem_config import L1_MAX_KB as MAX_L1_KB, L2_MAX_KB as MAX_L2_KB, L3_MAX_KB as MAX_L3_KB
 
 logger = logging.getLogger("snowfox-memory")
 
@@ -13,7 +15,47 @@ def _h(): return Path.home() / "AppData/Local/hermes"
 def _m(): return _h() / "memories"
 
 def _on_plugin_load():
-    logger.info("[snowfox] loaded (order: USER-L4-F0-L3-L2-L1, post_llm)")
+    logger.info("[snowfox] loaded (order: USER-L4-F0-L3-L2-L1, post_llm, inline+startup compress)")
+
+def _run_script(name: str) -> str | None:
+    """Run a memory script by name (mem_compress/consolidate/retire), return stdout first line."""
+    script = _h() / f"scripts/{name}.py"
+    if not script.exists():
+        logger.warning(f"[snowfox] script not found: {script}")
+        return None
+    try:
+        r = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=30)
+        out = (r.stdout or "").strip()
+        if r.returncode != 0:
+            logger.error(f"[snowfox] {name} failed: {(r.stderr or '')[:200]}")
+            return None
+        return out.split("\n")[0] if out else "OK"
+    except Exception as e:
+        logger.error(f"[snowfox] {name} exception: {e}")
+        return None
+
+def _startup_check():
+    """On plugin load, check all levels and compress any over-limit files."""
+    # L3 check first (deepest first — so cascade chain runs top-down)
+    lp = _m() / "long_term.md"
+    if lp.exists() and lp.stat().st_size / 1024 > MAX_L3_KB:
+        logger.info(f"[snowfox] startup: L3 over {MAX_L3_KB}KB, running retire...")
+        r = _run_script("mem_retire")
+        if r: logger.info(f"[snowfox] startup: L3 retire → {r}")
+
+    # L2 check
+    sp = _m() / "summary.md"
+    if sp.exists() and sp.stat().st_size / 1024 > MAX_L2_KB:
+        logger.info(f"[snowfox] startup: L2 over {MAX_L2_KB}KB, running consolidate...")
+        r = _run_script("mem_consolidate")
+        if r: logger.info(f"[snowfox] startup: L2 consolidate → {r}")
+
+    # L1 check (does cascade too)
+    rp = _m() / "recent.md"
+    if rp.exists() and rp.stat().st_size / 1024 > MAX_L1_KB:
+        logger.info(f"[snowfox] startup: L1 over {MAX_L1_KB}KB, running compress...")
+        r = _run_script("mem_compress")
+        if r: logger.info(f"[snowfox] startup: L1 compress → {r}")
 
 _LAST_SESSION_END_ID: str = ""
 
@@ -55,6 +97,28 @@ def _rebuild_assembly():
     except Exception as e:
         logger.error(f"[snowfox] assembly write failed: {e}")
 
+def _compress_l1_if_overflow():
+    """Check recent.md size; if > MAX_L1_KB, run mem_compress.py immediately."""
+    p = _h() / "memories/recent.md"
+    if not p.exists(): return
+    sz_kb = p.stat().st_size / 1024
+    if sz_kb <= MAX_L1_KB:
+        return
+    script = _h() / "scripts/mem_compress.py"
+    if not script.exists():
+        logger.warning(f"[snowfox] compress script not found: {script}")
+        return
+    logger.info(f"[snowfox] L1 overflow: {sz_kb:.1f}KB > {MAX_L1_KB}KB, compressing...")
+    try:
+        r = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            ns = p.stat().st_size / 1024 if p.exists() else 0
+            logger.info(f"[snowfox] L1 compressed: {sz_kb:.1f}KB -> {ns:.1f}KB")
+        else:
+            logger.error(f"[snowfox] L1 compress failed: {r.stderr[:200]}")
+    except Exception as e:
+        logger.error(f"[snowfox] L1 compress exception: {e}")
+
 def _fingerprint(text: str) -> str:
     # Use isalnum() to support CJK + alphanumeric (vs re.sub that strips Chinese)
     return ''.join(c for c in text.strip() if c.isalnum())[:40].lower()
@@ -84,6 +148,7 @@ def _write_recent(user_msg: str, asst_msg: str, session_id: str):
     with open(p, "a", encoding="utf-8") as f:
         f.write(_build_entry(user_msg, asst_msg, session_id))
     logger.info("[snowfox] wrote to recent.md")
+    _compress_l1_if_overflow()
 
 def _write_pending(user_msg: str, session_id: str):
     p = _h() / "memories/recent.md"
@@ -142,14 +207,12 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
     _rebuild_assembly()
 
 def _on_post_llm_call(response_text="", session_id="", **kw):
-    """回复生成后立即写入 recent.md + 重建 assembly。"""
+    """回复生成后立即写入 recent.md + 重建 assembly + 超限压缩。"""
     if not session_id or not response_text: return
-    # 从 pre_llm_call 已保存的 user 消息中找待完成的 pair
     p = _h() / "memories/recent.md"
     if not p.exists(): return
     content = p.read_text(encoding="utf-8", errors="replace")
     if "pending" in content:
-        # 替换 pending 为完整对话
         secs = content.split("\n## ")
         for i, sec in enumerate(secs):
             if "pending" in sec:
@@ -158,6 +221,7 @@ def _on_post_llm_call(response_text="", session_id="", **kw):
                 break
         p.write_text("\n## ".join(secs), encoding="utf-8")
         _rebuild_assembly()
+        _compress_l1_if_overflow()
         logger.info("[snowfox] post_llm: updated pending -> complete")
 
 def _on_session_end(session_id="", completed=False, **kw):
@@ -175,7 +239,8 @@ def register(ctx):
     ctx.register_hook("on_session_end", _on_session_end)
     logger.info("[snowfox] hooks: pre_llm, post_llm, session_end")
     _rebuild_assembly()
+    _startup_check()  # catch any over-limit files from previous session
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("snowfox-memory: USER-L4-F0-L3-L2-L1 assembly + post_llm")
+    print("snowfox-memory: USER-L4-F0-L3-L2-L1 assembly + post_llm + inline-compress")

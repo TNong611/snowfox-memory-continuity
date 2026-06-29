@@ -72,7 +72,7 @@ def assemble_context():
     print(f"OK: {out.name} {len(text)}B (build: {build_ts})")
 
 if __name__ == "__main__":
-    run_script("mem_compress.py")
+    # L1→L2 compress is now inline (triggered by plugin on write overflow)
     run_script("mem_consolidate.py")
     run_script("mem_retire.py")
     assemble_context()
