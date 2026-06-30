@@ -209,6 +209,19 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
     if pu:
         _write_pending(pu, session_id)
     _rebuild_assembly()
+    
+    # Return override_messages to replace session DB history with assembled memory.
+    asm = _m() / "_assembled_context.md"
+    if asm.exists():
+        assembled_content = asm.read_text(encoding="utf-8", errors="replace")
+        combined = (
+            f"{assembled_content}\n\n"
+            f"---\n\n"
+            f"## Current Turn\n\n"
+            f"{kw.get('user_message', '')}"
+        )
+        return {"override_messages": [{"role": "user", "content": combined}]}
+    return None
 
 def _on_post_llm_call(response_text="", session_id="", **kw):
     """回复生成后立即写入 recent.md + 重建 assembly + 超限压缩。"""
