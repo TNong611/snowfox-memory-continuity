@@ -7,6 +7,12 @@ import logging, re, time, traceback, subprocess, sys
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+
+# Ensure mem_config is importable regardless of plugin loader's CWD
+_SCRIPTS_DIR = Path.home() / "AppData/Local/hermes/scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
 from mem_config import L1_MAX_KB as MAX_L1_KB, L2_MAX_KB as MAX_L2_KB, L3_MAX_KB as MAX_L3_KB
 
 logger = logging.getLogger("snowfox-memory")
