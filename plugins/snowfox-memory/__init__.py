@@ -160,6 +160,7 @@ def _write_pending(user_msg: str, session_id: str):
     if _last_entry_fp(p) == _fingerprint(user_msg): return
     with open(p, "a", encoding="utf-8") as f:
         f.write(_build_entry(user_msg, "", session_id, pending=True))
+    _compress_l1_if_overflow()
 
 def _cleanup_pending(user_msg: str):
     p = _h() / "memories/recent.md"
@@ -209,6 +210,7 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
     if pu:
         _write_pending(pu, session_id)
     _rebuild_assembly()
+    _compress_l1_if_overflow()  # pre_llm 返回 override 后 post_llm/session_end 不触发，这里兜底
     
     # Return override_messages to replace session DB history with assembled memory.
     # Strip SnowFox internal markers before sending to LLM.
@@ -238,7 +240,7 @@ def _on_post_llm_call(response_text="", session_id="", **kw):
     if "pending" in content:
         secs = content.split("\n## ")
         for i, sec in enumerate(secs):
-            if "pending" in sec:
+            if "pending" in sec and session_id in sec:
                 ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 secs[i] = sec.replace("_等待回复..._", response_text).replace(" | pending", "").replace("_雪狐记录 | session=", f" | assistant_at={ts}\n\n---\n_雪狐记录 | session=")
                 break
