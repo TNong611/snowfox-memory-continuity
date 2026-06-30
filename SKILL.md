@@ -1,4 +1,4 @@
----
+﻿---
 name: memory-continuity
 description: "SnowFox 五级记忆 —— 一键部署 + 日常维护。加载此 skill 后自动检查部署状态，缺失组件自动补齐。"
 version: 4.8.0
@@ -17,7 +17,7 @@ tags: [memory, agent-input, hierarchical-memory, deploy, snowfox, hermes]
 
 ### 第 0 步：检查 `_assembled_context.md`
 
-检查 `~/AppData/Local/hermes/memories/_assembled_context.md` 是否存在且内容有效。
+检查 `${HERMES_HOME}/memories/_assembled_context.md` 是否存在且内容有效。
 如果不存在或为空 → 视为全新部署，顺序执行 1~9 步。
 如果存在且包含 USER/F0/L3/L2/L1 段 → 跳到第 6 步检查插件和 cron。
 
@@ -31,14 +31,18 @@ tags: [memory, agent-input, hierarchical-memory, deploy, snowfox, hermes]
 import os, time
 from pathlib import Path
 
-M = Path.home() / "AppData/Local/hermes/memories"
+M = _h() / "memories"
 M.mkdir(parents=True, exist_ok=True)
 
 # 创建初始空文件（若不存在）
 for name in ["fixed.md", "recent.md", "summary.md", "long_term.md", "archive.md", "user.md"]:
     p = M / name
     if not p.exists():
-        p.write_text(f"# {p.stem}\n\n---\n\n", encoding="utf-8")
+        p.write_text(f"# {p.stem}
+
+---
+
+", encoding="utf-8")
 
 # SOUL.md — 由 Hermes 平台管理，不在 memories/ 中
 ```
@@ -87,7 +91,11 @@ from typing import Any
 
 logger = logging.getLogger("snowfox-memory")
 
-def _h(): return Path.home() / "AppData/Local/hermes"
+def _h():
+    return Path(os.environ.get('HERMES_HOME') or (
+        Path.home() / 'AppData' / 'Local' / 'hermes' if os.name == 'nt' 
+        else Path.home() / '.hermes'
+    ))
 def _m(): return _h() / "memories"
 
 from mem_config import L1_MAX_KB as MAX_L1_KB, L2_MAX_KB as MAX_L2_KB, L3_MAX_KB as MAX_L3_KB
@@ -108,7 +116,8 @@ def _run_script(name: str) -> str | None:
         if r.returncode != 0:
             logger.error(f"[snowfox] {name} failed: {(r.stderr or '')[:200]}")
             return None
-        return out.split("\\n")[0] if out else "OK"
+        return out.split("\
+")[0] if out else "OK"
     except Exception as e:
         logger.error(f"[snowfox] {name} exception: {e}")
         return None
@@ -148,24 +157,33 @@ def _rebuild_assembly():
     parts.append("")
     # 组装顺序：USER → F0 → L3 → L2 → L1（L4 使用语义索引检索）
     s = _read_or(m / "user.md")
-    if s: parts.append(f"## USER\\\\n{s}")
+    if s: parts.append(f"## USER\\\
+{s}")
     s = _read_or(m / "fixed.md")
-    if s: parts.append(f"## F0\\n{s}")
+    if s: parts.append(f"## F0\
+{s}")
     s = _read_or(m / "long_term.md")
-    if s: parts.append(f"## L3\\n{s}")
+    if s: parts.append(f"## L3\
+{s}")
     l2c = _read_or(m / "summary.md")
     if l2c:
-        secs = l2c.split("\\n## ")
+        secs = l2c.split("\
+## ")
         kept = []; total = 0; limit = 90 * 1024
         for sec in reversed(secs):
             st = secs[0] if sec is secs[0] else "## " + sec
             bs = len(st.encode("utf-8"))
             if total + bs > limit and total > 0: break
             kept.insert(0, st); total += bs
-        if kept: parts.append("## L2\\n" + "\\n".join(kept))
+        if kept: parts.append("## L2\
+" + "\
+".join(kept))
     s = _read_or(m / "recent.md")
-    if s: parts.append(f"## L1\\n{s}")
-    text = "\\n\\n".join(parts)
+    if s: parts.append(f"## L1\
+{s}")
+    text = "\
+\
+".join(parts)
     try:
         (m / "_assembled_context.md").write_text(text, encoding="utf-8")
         (m / "_assembly_version.txt").write_text(build_ts, encoding="utf-8")
@@ -201,7 +219,8 @@ def _fingerprint(text: str) -> str:
 
 def _last_entry_fp(p: Path) -> str:
     if not p.exists(): return ""
-    secs = p.read_text(encoding="utf-8", errors="replace").split("\\n## ")
+    secs = p.read_text(encoding="utf-8", errors="replace").split("\
+## ")
     if len(secs) < 2: return ""
     fp = _fingerprint(secs[-1])
     if fp: return fp
@@ -211,7 +230,19 @@ def _build_entry(user_msg: str, asst_msg: str, session_id: str, pending: bool = 
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     status = " | pending" if pending else ""
     asst = "_等待回复..._" if pending else asst_msg
-    return f"## {ts} | session={session_id}{status}\\n\\n### User\\n\\n{user_msg}\\n\\n### Assistant\\n\\n{asst}\\n\\n---\\n_雪狐记录 | session={session_id}_\\n"
+    return f"## {ts} | session={session_id}{status}\
+\
+### User\
+\
+{user_msg}\
+\
+### Assistant\
+\
+{asst}\
+\
+---\
+_雪狐记录 | session={session_id}_\
+"
 
 def _write_recent(user_msg: str, asst_msg: str, session_id: str):
     p = _h() / "memories/recent.md"
@@ -236,14 +267,16 @@ def _cleanup_pending(user_msg: str):
     if not p.exists(): return
     fp = _fingerprint(user_msg)
     content = p.read_text(encoding="utf-8", errors="replace")
-    secs = content.split("\\n## ")
+    secs = content.split("\
+## ")
     kept = [secs[0]]; changed = False
     for sec in secs[1:]:
         if "pending" in sec and fp in _fingerprint(sec):
             changed = True; continue
         kept.append(sec)
     if changed:
-        p.write_text("\\n## ".join(kept), encoding="utf-8")
+        p.write_text("\
+## ".join(kept), encoding="utf-8")
 
 def _last_turn_from_db(session_id: str) -> tuple[str, str] | None:
     dbp = _h() / "state.db"
@@ -267,7 +300,8 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
         r = msg.get("role", ""); c = msg.get("content", "")
         if c is None: continue
         if isinstance(c, list):
-            c = "\\n".join(p.get("text","") for p in c if isinstance(p,dict) and p.get("type")=="text")
+            c = "\
+".join(p.get("text","") for p in c if isinstance(p,dict) and p.get("type")=="text")
         sc = str(c).strip()
         if r == "user" and sc:
             if lu is not None: la = None
@@ -286,13 +320,15 @@ def _on_post_llm_call(response_text="", session_id="", **kw):
     if not p.exists(): return
     content = p.read_text(encoding="utf-8", errors="replace")
     if "pending" in content:
-        secs = content.split("\\n## ")
+        secs = content.split("\
+## ")
         for i, sec in enumerate(secs):
             if "pending" in sec:
                 ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 secs[i] = sec.replace("_等待回复..._", response_text).replace(" | pending", "")
                 break
-        p.write_text("\n## ".join(secs), encoding="utf-8")
+        p.write_text("
+## ".join(secs), encoding="utf-8")
         _rebuild_assembly()
         _compress_l1_if_overflow()
         logger.info("[snowfox] post_llm: updated pending -> complete")
@@ -345,18 +381,18 @@ self.user_entries = self._read_file(mem_dir / "user" / "profile.md")        # �
 
 | 位置 | 用途 | 应修路径 |
 |------|------|----------|
-| `~/AppData/Local/hermes/hermes-agent/tools/memory_tool.py` | 运行时 | C:\Users\tnong\AppData\Local\hermes\hermes-agent\tools\memory_tool.py |
+| `${HERMES_HOME}/hermes-agent/tools/memory_tool.py` | 运行时 | C:\Users\tnong\AppData\Local\hermes\hermes-agent\tools\memory_tool.py |
 | `D:\AI\snowfox\tools\memory_tool.py` | 开发 fork | 如果开发 fork 存在则同步 |
 
 #### 验证
 
 ```bash
-grep -n "return mem_dir" ~/AppData/Local/hermes/hermes-agent/tools/memory_tool.py
+grep -n "return mem_dir" ${HERMES_HOME}/hermes-agent/tools/memory_tool.py
 # 期望输出：
 # 248:            return mem_dir / "user" / "profile.md"
 # 249:        return mem_dir / "long_term" / "memory.md"
 
-grep -n "self._read_file" ~/AppData/Local/hermes/hermes-agent/tools/memory_tool.py
+grep -n "self._read_file" ${HERMES_HOME}/hermes-agent/tools/memory_tool.py
 # 期望输出（第 152-153 行）：
 # self.memory_entries = self._read_file(mem_dir / "long_term" / "memory.md")
 # self.user_entries = self._read_file(mem_dir / "user" / "profile.md")
@@ -368,11 +404,11 @@ grep -n "self._read_file" ~/AppData/Local/hermes/hermes-agent/tools/memory_tool.
 
 ```bash
 # 如果旧 MEMORY.md 有内容且新 long_term/memory.md 没有
-diff ~/AppData/Local/hermes/memories/MEMORY.md ~/AppData/Local/hermes/memories/long_term/memory.md \
+diff ${HERMES_HOME}/memories/MEMORY.md ${HERMES_HOME}/memories/long_term/memory.md \
   && echo "IDENTICAL" || echo "DIFFERENT — 需手动合并"
 
 # 删除已迁移的旧文件
-rm ~/AppData/Local/hermes/memories/MEMORY.md ~/AppData/Local/hermes/memories/USER.md
+rm ${HERMES_HOME}/memories/MEMORY.md ${HERMES_HOME}/memories/USER.md
 ```
 
 #### 生效时间
@@ -392,7 +428,7 @@ hermes plugins enable snowfox-memory
 验证（必做——不然插件静默跳过无异于没安装）：
 ```bash
 # 检查 YAML 值是否为合法列表（不是字符串）
-grep -A2 "plugins:" ~/AppData/Local/hermes/config.yaml | grep "enabled"
+grep -A2 "plugins:" ${HERMES_HOME}/config.yaml | grep "enabled"
 # 期望输出：
 #   enabled:
 #     - snowfox-memory
@@ -450,7 +486,14 @@ L2→L3：LLM 二次压缩（≤150字中文，跳过<15字空结果，去重时
 
 会话框**只用来显示**，不作为输入来源。
 
-你的输入已经是组装的五级记忆：\n- 【USER 自我认知】你的身份和偏好\n- 【F0 固定记忆】用户让你记住的事/待执行指令，执行完清除，永不压缩\n- 【L3 长期记忆】跨会话核心知识\n- 【L2 中期摘要】压缩后的历史会话摘要\n- 【L1 完整近期对话】当前仍在活跃期的对话记录\n\n**L4（归档）** 不在上下文中，有独立的语义索引（TF-IDF）。需要用 `python l4_search.py 关键词` 检索。
+你的输入已经是组装的五级记忆：
+- 【USER 自我认知】你的身份和偏好
+- 【F0 固定记忆】用户让你记住的事/待执行指令，执行完清除，永不压缩
+- 【L3 长期记忆】跨会话核心知识
+- 【L2 中期摘要】压缩后的历史会话摘要
+- 【L1 完整近期对话】当前仍在活跃期的对话记录
+
+**L4（归档）** 不在上下文中，有独立的语义索引（TF-IDF）。需要用 `python l4_search.py 关键词` 检索。
 
 **警告：禁止调用 read_file 读取任何记忆文件（_assembled_context.md、recent.md 等）。**
 调用 read_file 会被去重系统拦截，返回空结果，导致你陷入无限工具循环。
@@ -475,7 +518,7 @@ F0 操作规范：
 ### 第 8 步：立即跑一次内存维护（刷新上下文）
 
 ```bash
-uv run ~/AppData/Local/hermes/scripts/memory_maintenance.py
+uv run ${HERMES_HOME}/scripts/memory_maintenance.py
 ```
 
 ### 第 9 步：验证
@@ -503,7 +546,8 @@ checks.append(("assembled", asm.exists() and asm.stat().st_size > 500, "_assembl
 
 ok = sum(1 for _, state, _ in checks if state)
 total = len(checks)
-print(f"\n{'='*50}")
+print(f"
+{'='*50}")
 print(f"  🧠 SnowFox 五级记忆 — 部署完成")
 print(f"  ✅ {ok}/{total} 组件就绪" if ok == total else f"  ⚠️ {ok}/{total} 组件就绪")
 print(f"{'='*50}")
@@ -515,7 +559,15 @@ for _, state, label in checks:
 
 部署完成后，向用户输出：
 
-```\n🧠 SnowFox 五级记忆 — 一键部署完成！\n\n✅ {ok}/{total} 组件全部就绪\n├─ 输入模式已切换为五级记忆\n├─ 插件 snowfox-memory → 每轮自动写入 L1\n├─ 级联压缩链（写入时触发，无需 cron）\n├─ `hermes config set plugins.enabled` → 新会话自动加载\n└─ 网关已重启或将在桌面端自动重生 → 插件立即生效
+```
+🧠 SnowFox 五级记忆 — 一键部署完成！
+
+✅ {ok}/{total} 组件全部就绪
+├─ 输入模式已切换为五级记忆
+├─ 插件 snowfox-memory → 每轮自动写入 L1
+├─ 级联压缩链（写入时触发，无需 cron）
+├─ `hermes config set plugins.enabled` → 新会话自动加载
+└─ 网关已重启或将在桌面端自动重生 → 插件立即生效
 
 需要 `/new` 重启会话后，插件在新会话中自动生效。如果网关未加载新配置：杀网关进程后桌面端会自动重生。
 ```
@@ -525,23 +577,23 @@ for _, state, label in checks:
 ### 加载完整上下文
 
 ```python
-read_file("~/AppData/Local/hermes/memories/_assembled_context.md")
+read_file("${HERMES_HOME}/memories/_assembled_context.md")
 ```
 
 ### 查看当前容量
 
 ```bash
-ls -la ~/AppData/Local/hermes/memories/{fixed,recent,summary,long_term}/
+ls -la ${HERMES_HOME}/memories/{fixed,recent,summary,long_term}/
 ```
 
 ### F0 固定记忆操作
 
 ```python
 # 写入
-write_file("~/AppData/Local/hermes/memories/fixed/{名称}.md", "内容")
+write_file("${HERMES_HOME}/memories/fixed/{名称}.md", "内容")
 
 # 删除
-import os; os.remove(os.path.expanduser("~/AppData/Local/hermes/memories/fixed/{名称}.md"))
+import os; os.remove(os.path.expanduser("${HERMES_HOME}/memories/fixed/{名称}.md"))
 ```
 
 ### 状态检查
@@ -549,7 +601,7 @@ import os; os.remove(os.path.expanduser("~/AppData/Local/hermes/memories/fixed/{
 加载本 skill 后，Agent 应自动执行部署检查。如果仅需查看状态无需部署：
 
 ```python
-read_file("~/AppData/Local/hermes/memories/_assembled_context.md")
+read_file("${HERMES_HOME}/memories/_assembled_context.md")
 ```
 然后检查各目录是否存在、插件是否启用。
 
@@ -566,9 +618,18 @@ read_file("~/AppData/Local/hermes/memories/_assembled_context.md")
 | 归档区 | L4 | 不限 | 不进上下文，语义索引（TF-IDF）检索 |
 | 自我认知 | USER | 独立 | 不压缩不退役 |
 
-**核心规则：** 超限后**砍到保留上限**（移出所有超过 MAX_KB KB 的最旧段），不是固定移出量。\nL1 > 50KB → 砍到 45KB，移出段 LLM 摘要→L2\nL2 > 100KB → 砍到 90KB，移出段LLM二次压缩→L3（去空去重去时间戳）\nL3 > 50KB → 砍到 45KB，移出段纯搬运→L4\n\n**⚠️ 触发器 = `MAX_KB`（上限），保持目标 = `KEEP_KB`。** 检查条件是 `if sz <= MAX_KB`（例如 50KB）判断是否无需操作。超 `MAX_KB` 后砍到 ≤`KEEP_KB`（45KB）。二者并不相同——文件在 `KEEP_KB` 和 `MAX_KB` 之间的区间内被视为正常无需压缩。打印信息同时显示两个值：`no action needed (target ≤{KEEP_KB}KB)`。
+**核心规则：** 超限后**砍到保留上限**（移出所有超过 MAX_KB KB 的最旧段），不是固定移出量。
+L1 > 50KB → 砍到 45KB，移出段 LLM 摘要→L2
+L2 > 100KB → 砍到 90KB，移出段LLM二次压缩→L3（去空去重去时间戳）
+L3 > 50KB → 砍到 45KB，移出段纯搬运→L4
 
-**⚠️ 全部层级：事件驱动（插件写入时即时触发），cron 可选兜底（每 10 分钟巡检）。**  \nL1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。  \nL2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。  \nL3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。  \n整条链从插件写入开始逐级传递，同时 cron 每 10 分钟跑一次 mem_maintain.py 可选兜底。
+**⚠️ 触发器 = `MAX_KB`（上限），保持目标 = `KEEP_KB`。** 检查条件是 `if sz <= MAX_KB`（例如 50KB）判断是否无需操作。超 `MAX_KB` 后砍到 ≤`KEEP_KB`（45KB）。二者并不相同——文件在 `KEEP_KB` 和 `MAX_KB` 之间的区间内被视为正常无需压缩。打印信息同时显示两个值：`no action needed (target ≤{KEEP_KB}KB)`。
+
+**⚠️ 全部层级：事件驱动（插件写入时即时触发），cron 可选兜底（每 10 分钟巡检）。**  
+L1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。  
+L2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。  
+L3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。  
+整条链从插件写入开始逐级传递，同时 cron 每 10 分钟跑一次 mem_maintain.py 可选兜底。
 
 ## 🧹 定期清理
 
@@ -581,13 +642,13 @@ L1 中积累了大量 `request_dump_*` 和带 JSON tool 输出的噪声文件，
 清理命令（保留最近 6 个有效会话，删除其余）：
 
 ```bash
-cd ~/AppData/Local/hermes/memories/recent
+cd ${HERMES_HOME}/memories/recent
 ls -t *.md | tail -n +7 | xargs rm -f
 ```
 
 然后立即跑一次维护：
 ```bash
-uv run ~/AppData/Local/hermes/scripts/memory_maintenance.py
+uv run ${HERMES_HOME}/scripts/memory_maintenance.py
 ```
 
 ### 删除废弃脚本
@@ -595,10 +656,10 @@ uv run ~/AppData/Local/hermes/scripts/memory_maintenance.py
 `memory_manager.py`（旧版 v2，与 cron pipeline 冲突）、`.sh`、`.bat`、`check_memory_status.py` 等不参与 cron 调度的脚本应及时清理：
 
 ```bash
-rm -f ~/AppData/Local/hermes/scripts/memory_manager.py
-rm -f ~/AppData/Local/hermes/scripts/*.sh
-rm -f ~/AppData/Local/hermes/scripts/*.bat
-rm -f ~/AppData/Local/hermes/scripts/check_memory_status.py
+rm -f ${HERMES_HOME}/scripts/memory_manager.py
+rm -f ${HERMES_HOME}/scripts/*.sh
+rm -f ${HERMES_HOME}/scripts/*.bat
+rm -f ${HERMES_HOME}/scripts/check_memory_status.py
 ```
 
 ### 删除残留锁文件
@@ -606,8 +667,8 @@ rm -f ~/AppData/Local/hermes/scripts/check_memory_status.py
 Hermes 内存 tool 在写入中断时可能留下 `.lock` 文件：
 
 ```bash
-rm -f ~/AppData/Local/hermes/memories/MEMORY.md.lock
-rm -f ~/AppData/Local/hermes/memories/USER.md.lock
+rm -f ${HERMES_HOME}/memories/MEMORY.md.lock
+rm -f ${HERMES_HOME}/memories/USER.md.lock
 ```
 
 ### 清理 L2 噪声（保留有效内容）
@@ -622,7 +683,7 @@ L2 中可能积累原始 tool 输出噪音（JSON 字典、乱码 PowerShell 报
 如果 L1 中有 `request_dump_*` 等历史 session dump，先从中提取对话摘要写入 L2：
 
 ```bash
-cd ~/AppData/Local/hermes && uv run scripts/rebuild_l2.py
+cd ${HERMES_HOME} && uv run scripts/rebuild_l2.py
 ```
 
 手动实现：遍历 L1 中最旧的文件（保留最近 6 个），提取 user/assistant 消息对，去除 system prompt 和 JSON tool 输出，写入 `summary/` 作为结构化摘要。详见 `skill_view(name='memory-continuity', file_path='scripts/rebuild_l2.py')`。
@@ -633,15 +694,15 @@ cd ~/AppData/Local/hermes && uv run scripts/rebuild_l2.py
 
 ```bash
 # 查看哪些文件是纯噪声——类似 {'name': 'terminal', 'args': {...}} 或二进制乱码
-grep -l "^\\s*{'name': '" ~/AppData/Local/hermes/memories/summary/*.md 2>/dev/null
+grep -l "^\\s*{'name': '" ${HERMES_HOME}/memories/summary/*.md 2>/dev/null
 # 仅删除确认的噪声文件
-cd ~/AppData/Local/hermes/memories/summary && rm -f <确认为噪声的文件>
+cd ${HERMES_HOME}/memories/summary && rm -f <确认为噪声的文件>
 ```
 
 #### 第三步：重新组装
 
 ```bash
-uv run ~/AppData/Local/hermes/scripts/memory_maintenance.py
+uv run ${HERMES_HOME}/scripts/memory_maintenance.py
 ```
 
 > ⚠️ **经验教训：L2 不清空！** 每级记忆都有用户投入的对话价值，直接 `rm -rf summary/` 会丢失中期历史上下文，导致用户不满。**永远优先提取摘要 → 再选择性清理 → 绝不整级删除。**
@@ -653,7 +714,7 @@ uv run ~/AppData/Local/hermes/scripts/memory_maintenance.py
 ### mem_compress.py（简化版 — 无 API 依赖的 fallback）
 
 > ⚠️ **正式版已标配 LLM 摘要 + 集中配置（mem_config.py），本页为内联备份。**
-> 部署在 `~/AppData/Local/hermes/scripts/mem_compress.py` 的**运行版**从 `scripts/mem_config.py` 导入容量参数并调用 DeepSeek Chat API 做语义摘要（33.5× 压缩）。本页内联代码是不依赖外部 API 和配置模块的简化版本——仅截断保留前几行，保持部署自足。**如使用内联版本替换运行版，务必同步更新容量参数（L1: MAX=50KB / KEEP=45KB）。**
+> 部署在 `${HERMES_HOME}/scripts/mem_compress.py` 的**运行版**从 `scripts/mem_config.py` 导入容量参数并调用 DeepSeek Chat API 做语义摘要（33.5× 压缩）。本页内联代码是不依赖外部 API 和配置模块的简化版本——仅截断保留前几行，保持部署自足。**如使用内联版本替换运行版，务必同步更新容量参数（L1: MAX=50KB / KEEP=45KB）。**
 
 L1 (recent.md) > 50KB 时，移出旧段直到 ≤45KB→L2 (summary.md)。运行版走 LLM 摘要，本 fallback 仅截断保留。
 
@@ -662,24 +723,28 @@ L1 (recent.md) > 50KB 时，移出旧段直到 ≤45KB→L2 (summary.md)。运�
 """L1->L2: trim oldest sections from recent.md head, write to summary.md."""
 import os
 from datetime import datetime
-HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+HH = str(_h())
 L1 = HH + "/memories/recent.md"
 SUM = HH + "/memories/summary.md"
 MAX_KB = 50; KEEP_KB = 45  # trigger=50KB, target=45KB
 
 def parse(content):
-    lines = content.split("\n")
+    lines = content.split("
+")
     hdr = ""; secs = []; cur = []; inHdr = True
     for line in lines:
         if inHdr:
             if line.startswith("# ") or line.startswith("_") or line.strip() == "" or line == "---":
-                hdr += line + "\n"; continue
+                hdr += line + "
+"; continue
             else: inHdr = False
         if line.startswith("## ") and not line.startswith("### "):
-            if cur: secs.append("\n".join(cur))
+            if cur: secs.append("
+".join(cur))
             cur = [line]
         else: cur.append(line)
-    if cur: secs.append("\n".join(cur))
+    if cur: secs.append("
+".join(cur))
     return hdr, secs
 
 def compress():
@@ -708,12 +773,18 @@ def compress():
         taken.pop()
         removed = sum(len(s.encode("utf-8")) for s in taken)
         print("  [safety] keeping 1 section to avoid empty recent.md")
-    open(L1, "w", encoding="utf-8").write(hdr + "\n".join(keep))
+    open(L1, "w", encoding="utf-8").write(hdr + "
+".join(keep))
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(SUM, "a", encoding="utf-8") as sf:
-        sf.write(f"\n## {now} | compressed-from-L1\n\n")
-        for s in taken: sf.write(s + "\n")
-        sf.write("---\n")
+        sf.write(f"
+## {now} | compressed-from-L1
+
+")
+        for s in taken: sf.write(s + "
+")
+        sf.write("---
+")
     ns = os.path.getsize(L1) / 1024
     print(f"  L1->L2: removed {len(taken)} entries ({removed/1024:.1f}KB), remaining {ns:.1f}KB")
     print("  OK L1 compression")
@@ -747,20 +818,23 @@ def read_md(filepath, heading=""):
     p = M / filepath
     if not p.exists(): return ""
     c = p.read_text(encoding="utf-8")
-    return f"{heading}\\n{c}" if heading else c
+    return f"{heading}\
+{c}" if heading else c
 
 def read_md_sections(filepath, limit_kb=0, section_chars=0):
     p = M / filepath
     if not p.exists(): return ""
     content = p.read_text(encoding="utf-8")
     if content.strip().startswith("# "):
-        parts = content.split("\\n## ", 1)
+        parts = content.split("\
+## ", 1)
         header = parts[0] if len(parts) > 1 else ""
         body = ("## " + parts[1]) if len(parts) > 1 else content
     else:
         header = ""
         body = content
-    sections = body.split("\\n## ")
+    sections = body.split("\
+## ")
     if section_chars > 0:
         sections = [s[:section_chars] for s in sections]
     if limit_kb > 0:
@@ -771,7 +845,8 @@ def read_md_sections(filepath, limit_kb=0, section_chars=0):
             kept.insert(0, s)
             total += len(s.encode("utf-8"))
         sections = kept
-    return "\\n".join(sections)
+    return "\
+".join(sections)
 
 def assemble_context():
     parts = []
@@ -787,11 +862,14 @@ def assemble_context():
     s = read_md("user.md", "## USER")
     if s: parts.append(s)
     s = read_md_sections("summary.md", limit_kb=90, section_chars=150)
-    if s: parts.append(f"## L2\\n{s}")
+    if s: parts.append(f"## L2\
+{s}")
     s = read_md("recent.md", "## L1")
     if s: parts.append(s)
     out = M / "_assembled_context.md"
-    text = "\\n\\n".join(parts)
+    text = "\
+\
+".join(parts)
     out.write_text(text, encoding="utf-8")
     print(f"OK: {out.name} {len(text)}B (build: {build_ts})")
 
@@ -833,12 +911,12 @@ skill_view(name='memory-continuity', file_path='references/publishing-to-hub.md'
 hermes skills tap add github.com/TNong611/snowfox-memory-continuity
 
 # 发布到注册表
-hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-continuity/
+hermes skills publish --source ${HERMES_HOME}/skills/note-taking/memory-continuity/
 ```
 
 ## 常见陷阱
 
-1. **路径问题**：所有 `read_file()` 必须用绝对路径 `~/AppData/Local/hermes/memories/_assembled_context.md`，不能用相对路径。
+1. **路径问题**：所有 `read_file()` 必须用绝对路径 `${HERMES_HOME}/memories/_assembled_context.md`，不能用相对路径。
 3. **插件不自动加载**：用户安装的插件（`~/.hermes/plugins/`）无论 `kind` 是什么，都需要 `plugins.enabled` 配置。部署第 5 步会自动配好。
 3. **网关无法自杀**：`hermes gateway restart` 在网关进程内被拦截（SIGTERM 传播到子进程）。解决方案：`taskkill //F //PID <pid>` 杀掉旧网关，桌面端检测到子进程死亡后自动重生新进程并加载新配置。MSYS（git-bash）下 `//F` 而非 `/F` 防止路径展开。
 4. **新会话生效**：新增插件和 cron 后，需 `/new` 重启当前会话。插件在会话初始化时加载，已有会话不重新加载插件列表。
@@ -846,10 +924,17 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 6. **会话框不回传 token**：切换为五级记忆后，会话框历史不输入模型，烧的是 API token 不是本地资源。
 7. **F0 永不自动清理**：用户说"忘了"或任务完成后必须手动删除 fixed/ 中的文件。
 8. **L2 垃圾污染——禁止清空 L2！**：`mem_compress.py` 未启用过滤时，L2 会积累原始 tool 输出（JSON dict、乱码 PowerShell 报错、失败 session 转储），污染上下文。修复：启用过滤版 `mem_compress.py` 并用 `scripts/rebuild_l2.py` 从旧 L1 提取干净摘要。**绝不能直接 `rm -rf summary/` 清空整个 L2**——这破坏了五级记忆链且丢失中期上下文。
-9. **Trigger-vs-Keep 区别——`MAX_KB` 是触发阈值，`KEEP_KB` 是压缩后目标**：压缩脚本用 `if sz <= MAX_KB` 判断是否超限（例如 50KB）。超限后砍到 ≤`KEEP_KB`（45KB）。二者不同——文件在 (KEEP_KB, MAX_KB] 区间内为正常无需压缩。打印信息同时显示两个值以消除误解。三个脚本统一逻辑：\n   - L1: `MAX_KB=50; KEEP_KB=45` → 超**50KB**触发，逐段移出直到余量 ≤45KB(LLM摘要)\n   - L2: `MAX_KB=100; KEEP_KB=90` → 超**100KB**触发，逐段移出直到余量 ≤90KB(纯搬运)\n   - L3: `MAX_KB=50; KEEP_KB=45` → 超**50KB**触发，逐段移出直到余量 ≤45KB(纯搬运)\n   - `need_remove = cur_bytes - KEEP_KB_bytes`；逐段累加 `removed`，`removed >= need_remove` 时停止\n   - ⚠️ 2026-06-29 已修正打印信息，从 `{MAX_KB}KB OK` 改为 `no action needed (target ≤{KEEP_KB}KB)`\n   - ⚠️ 不要自己编容量值——用户给的数字精确到个位数，猜错必被纠正\n   - ⚠️ 容量参数统一在 `scripts/mem_config.py` 定义，不分散在各脚本中
-10. **部署的 SOUL.md 可能包含相对路径**：skill 模板已用 `~/AppData/Local/hermes/...` 绝对路径，但早期部署的 `SOUL.md` 可能写的是 `read_file("memories/_assembled_context.md")`。如果加载上下文时找不到文件，检查 SOUL.md 中的路径前缀是否包含 `~/AppData/Local/hermes/`。
+9. **Trigger-vs-Keep 区别——`MAX_KB` 是触发阈值，`KEEP_KB` 是压缩后目标**：压缩脚本用 `if sz <= MAX_KB` 判断是否超限（例如 50KB）。超限后砍到 ≤`KEEP_KB`（45KB）。二者不同——文件在 (KEEP_KB, MAX_KB] 区间内为正常无需压缩。打印信息同时显示两个值以消除误解。三个脚本统一逻辑：
+   - L1: `MAX_KB=50; KEEP_KB=45` → 超**50KB**触发，逐段移出直到余量 ≤45KB(LLM摘要)
+   - L2: `MAX_KB=100; KEEP_KB=90` → 超**100KB**触发，逐段移出直到余量 ≤90KB(纯搬运)
+   - L3: `MAX_KB=50; KEEP_KB=45` → 超**50KB**触发，逐段移出直到余量 ≤45KB(纯搬运)
+   - `need_remove = cur_bytes - KEEP_KB_bytes`；逐段累加 `removed`，`removed >= need_remove` 时停止
+   - ⚠️ 2026-06-29 已修正打印信息，从 `{MAX_KB}KB OK` 改为 `no action needed (target ≤{KEEP_KB}KB)`
+   - ⚠️ 不要自己编容量值——用户给的数字精确到个位数，猜错必被纠正
+   - ⚠️ 容量参数统一在 `scripts/mem_config.py` 定义，不分散在各脚本中
+10. **部署的 SOUL.md 可能包含相对路径**：skill 模板已用 `${HERMES_HOME}/...` 绝对路径，但早期部署的 `SOUL.md` 可能写的是 `read_file("memories/_assembled_context.md")`。如果加载上下文时找不到文件，检查 SOUL.md 中的路径前缀是否包含 `${HERMES_HOME}/`。
 
-11. **不要跳过 L1 妄下结论**：看到空白会话框就说"这是第一句话"或"没有上下文"是错的——L1 里存着完整近期对话（保留上限 45KB）。在说任何"没有历史"之类的话之前，先确认 `read_file("~/AppData/Local/hermes/memories/_assembled_context.md")` 中 L1 段的内容。忘了读 L1 直接发言是五级记忆体系最常见的断层原因。
+11. **不要跳过 L1 妄下结论**：看到空白会话框就说"这是第一句话"或"没有上下文"是错的——L1 里存着完整近期对话（保留上限 45KB）。在说任何"没有历史"之类的话之前，先确认 `read_file("${HERMES_HOME}/memories/_assembled_context.md")` 中 L1 段的内容。忘了读 L1 直接发言是五级记忆体系最常见的断层原因。
 
 12. **`memories/USER.md` 和 `memories/MEMORY.md` 两个孤立文件**：Hermes 内置 memory tool 同时写（`_path_for`）和读（`load_from_disk`）这两个路径，但 SnowFox 装配脚本只读写 `user/profile.md` 和 `long_term/memory.md`。即使删除旧文件，下次 agent 调用 `memory(target='user')` 或 `memory(target='memory')` 会立即重建。**修复必须在 Hermes fork 的 `tools/memory_tool.py` 中同时修补两处：**
     - `_path_for()`（第 245-248 行）控制**写入**路径
@@ -861,20 +946,21 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 13. **四地脚本不同步——修改后必须三向同步**：代码同时存在于四个地方：
     - **SKILL.md 内联脚本**（skill 中的代码片段）
     - **SKILL.md 内联插件代码**（plugin __init__.py 片段）
-    - **`~/AppData/Local/hermes/scripts/`**（cron 实际执行）
+    - **`${HERMES_HOME}/scripts/`**（cron 实际执行）
     - **`D:\\AI\\snowfox-memory-continuity\\scripts/`** 和 **`D:\\AI\\snowfox-memory-continuity\\plugins/`**（GitHub 项目仓库）
     
     2026-06-29 修订：L1 压缩改为插件内联触发（事件驱动），cron 不再跑 compress。修改后必须同步：
-    - 修改 SKILL.md 内联脚本和插件代码 → 手动复制到 `~/AppData/Local/hermes/scripts/`、`~/AppData/Local/hermes/plugins/` 和项目仓库
+    - 修改 SKILL.md 内联脚本和插件代码 → 手动复制到 `${HERMES_HOME}/scripts/`、`${HERMES_HOME}/plugins/` 和项目仓库
     - 修改运行版 → 复制回 SKILL.md 内联脚本 + 插件代码 + 项目仓库
     - 推 GitHub 前 → 检查三个位置一致（特别检查 `MAX_KB` / `OVER_KB` 参数和 `parse()` 签名）
 
 15. **L1 压缩按段粒度，不按文件切分**：`mem_compress.py` 从 `recent.md` 的 `## ` 段头部逐个移出旧段直到 ≤TRIM_KB（45KB）。因为 single-file 架构（不是每轮一个文件），所以是按 `## ` 标记解析段、按字典序（文件头部最旧）移出。
 
-16. **`plugins.enabled` 格式陷阱——`hermes config set` 写出的是字符串不是列表**：YAML 里 `enabled: '[\"snowfox-memory\"]'` 被解析为 Python 字符串 `[\"snowfox-memory\"]`，不是列表。Hermes 的 `_get_enabled_plugins()`（plugins.py 第 246 行）检查 `isinstance(enabled, list)` → False → 返回 `None` → 所有插件被静默跳过。**修复**：用 `hermes plugins enable snowfox-memory` 而非 `hermes config set`。如果误用了 config set，查看 `grep "enabled:" ~/AppData/Local/hermes/config.yaml` 确认值类型。
+16. **`plugins.enabled` 格式陷阱——`hermes config set` 写出的是字符串不是列表**：YAML 里 `enabled: '[\"snowfox-memory\"]'` 被解析为 Python 字符串 `[\"snowfox-memory\"]`，不是列表。Hermes 的 `_get_enabled_plugins()`（plugins.py 第 246 行）检查 `isinstance(enabled, list)` → False → 返回 `None` → 所有插件被静默跳过。**修复**：用 `hermes plugins enable snowfox-memory` 而非 `hermes config set`。如果误用了 config set，查看 `grep "enabled:" ${HERMES_HOME}/config.yaml` 确认值类型。
 
-17. **修改 `prompt_builder.py` 后必须同步 SOUL.md**：`prompt_builder.py` 生成汇编上下文的段标题（如 `【L1 近期流】`），但运行时系统提示词里的描述来自 `SOUL.md` 中的 `## 输入模式` 段。改了 prompt_builder.py 中的描述但忘了改 SOUL.md，会导致运行系统提示与汇编上下文不一致。修复：每次更新 prompt_builder.py 中的记忆层级描述后，同步编辑 `~/AppData/Local/hermes/SOUL.md` 对应段落。
-\n18. **`post_llm_call` 钩子在多工具轮次中可能不触发**：【已废弃，`pre_llm_call` 已替代】。`turn_finalizer.py` 要求 `final_response and not interrupted` 才调用钩子。当助手的最终回复是**工具调用**（而非纯文本），或 `final_response` 为空字符串，钩子被静默跳过。2026-06-28 已全面迁移到 `pre_llm_call` + `on_session_end`，此坑不再复现。旧文档保留供回溯。
+17. **修改 `prompt_builder.py` 后必须同步 SOUL.md**：`prompt_builder.py` 生成汇编上下文的段标题（如 `【L1 近期流】`），但运行时系统提示词里的描述来自 `SOUL.md` 中的 `## 输入模式` 段。改了 prompt_builder.py 中的描述但忘了改 SOUL.md，会导致运行系统提示与汇编上下文不一致。修复：每次更新 prompt_builder.py 中的记忆层级描述后，同步编辑 `${HERMES_HOME}/SOUL.md` 对应段落。
+
+18. **`post_llm_call` 钩子在多工具轮次中可能不触发**：【已废弃，`pre_llm_call` 已替代】。`turn_finalizer.py` 要求 `final_response and not interrupted` 才调用钩子。当助手的最终回复是**工具调用**（而非纯文本），或 `final_response` 为空字符串，钩子被静默跳过。2026-06-28 已全面迁移到 `pre_llm_call` + `on_session_end`，此坑不再复现。旧文档保留供回溯。
 
 19. **插件日志级别默认不可见（`logger.debug`）**：`register()` 和 `_on_post_llm_call()` 使用的 `logger.debug` 在默认日志配置（INFO+）下完全看不见。排查插件是否加载/触发时：
     - 临时改成 `_root.warning()` 用 WARNING 级别输出（root logger 不受包级日志级别限制）
@@ -889,7 +975,7 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 
     ```python
     # Before (brok...[truncated]
-    - **临时修复**：手动 `cd ~/AppData/Local/hermes && python scripts/memory_maintenance.py` 重建
+    - **临时修复**：手动 `cd ${HERMES_HOME} && python scripts/memory_maintenance.py` 重建
     - **长期方案**：将 `_rebuild_assembly()` 改为通过 `subprocess.run(["python", "scripts/memory_maintenance.py"])` 或直接内联组装逻辑，避免跨进程 import
     - **检测**：检查 `_assembled_context.md` 是否包含最新 `recent/` 文件内容。如果 `ls -t recent/` 的最新文件时间戳 > `_assembled_context.md` 中 L1 段的最后更新时间戳，说明 assembly 落后了
 
@@ -915,14 +1001,23 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
             # ... extract text content ...
             break
     if _snowfox_current_user:
-        agent.ephemeral_system_prompt = f"\\n\\n---\\n# 当前用户输入\\n\\n{_snowfox_current_user}\\n\\n---"
+        agent.ephemeral_system_prompt = f"\
+\
+---\
+# 当前用户输入\
+\
+{_snowfox_current_user}\
+\
+---"
     
     # System prompt = cached (old assembly) + ephemeral (current user input)
     effective_system = active_system_prompt or ""
     if agent.ephemeral_system_prompt:
-        effective_system += "\\n\\n" + agent.ephemeral_system_prompt
+        effective_system += "\
+\
+" + agent.ephemeral_system_prompt
     api_messages = [{"role": "system", "content": effective_system}]
-    ```
+```
 
     **为什么 `api_messages` 必须完整保留给 DB 持久化**：`turn_context.py:221` 的 `messages = list(conversation_history)` 不可修改——DB 持久化（`_flush_messages_to_session_db`）依赖完整的 `messages` 列表。SnowFox 操作的是 `api_messages`（发送给 LLM 的副本），不影响 DB 写入。`pre_llm_call` 钩子从 `conversation_history` 参数（即 `_snowfox_ch`，完整的 `messages`）中提取对话轮次。
 
@@ -961,13 +1056,13 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
     def register(ctx):
         ctx.register_hook("pre_llm_call", handler_fn)
         ctx.register_hook("on_session_end", handler_fn)
-    ```
+```
 
     **错误写法（v0.17+ 无效）：**
     ```python
     def register() -> dict:
         return {"hooks": {"pre_llm_call": handler_fn}}  # ← dict 无人读取
-    ```
+```
 
     **钩子名称验证：** 框架调用的是 `"on_session_end"`（`turn_finalizer.py:450`，注意前缀 `on_`），不是 `"session_end"`。注册错误的钩子名称同样不会触发。
 
@@ -978,13 +1073,17 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
     - 用 `hermes plugins list` 检查 enabled 状态
     - 用 Python 手动验证：
       ```python
-      import sys; sys.path.insert(0, str(Path.home() / "AppData/Local/hermes"))
+      import sys; sys.path.insert(0, str(_H))
       from hermes_cli.plugins import get_plugin_manager
       pm = get_plugin_manager()
       print("hooks:", pm._hooks.get("pre_llm_call", []))  # 空列表 = 未注册
-      ```
+```
 
-26. **Pending 文件生命周期——`_cleanup_pending_for()` 必须在写完整对之前调用**：`pre_llm_call` 先写 pending（当前无回复的用户消息），下次触发时再写完整对。但 `_safe_write_turn()` 的 dedup 检查完整文件内容（含 "## User\n\n{user_msg}\n\n"），发现 pending 文件已含同一 user_msg，**挡住完整对的写入**。
+26. **Pending 文件生命周期——`_cleanup_pending_for()` 必须在写完整对之前调用**：`pre_llm_call` 先写 pending（当前无回复的用户消息），下次触发时再写完整对。但 `_safe_write_turn()` 的 dedup 检查完整文件内容（含 "## User
+
+{user_msg}
+
+"），发现 pending 文件已含同一 user_msg，**挡住完整对的写入**。
 
     **修复**：写完整对前先调 `_cleanup_pending_for(last_user)` 删除匹配的 pending 文件，再写完整对。
 
@@ -992,7 +1091,7 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
     if last_user and last_asst:
         _cleanup_pending_for(last_user)  # 先清 pending
         _safe_write_turn(last_user, last_asst, session_id)  # 再写完整对
-    ```
+```
 
     **`_cleanup_pending_for()` 实现要点：**
     - 只扫描 `*_pending_*.md` 文件（不碰正常文件）
@@ -1014,7 +1113,7 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 29. **容量参数在 `scripts/mem_config.py` 集中管理，不分散在各脚本中。** 调整容量时只改这一个文件，所有消费方（3 脚本 + 1 插件）自动生效。切勿直接去改 `mem_compress.py`/`mem_consolidate.py`/`mem_retire.py` 中的局部变量——它们已全部改为从 `mem_config.py` 导入。
 
 30. **修改容量后须同步到所有位置：** `mem_config.py` 同时存在于：
-    - `~/AppData/Local/hermes/scripts/mem_config.py`（运行版）
+    - `${HERMES_HOME}/scripts/mem_config.py`（运行版）
     - `D:\\AI\\snowfox-memory-continuity\\scripts\\mem_config.py`（GitHub 项目）
     - SKILL.md 中的容量表、内联脚本注释（以 `MAX_KB=50; KEEP_KB=45` 等注释形式）
     - `references/capacity-config.md`
@@ -1034,16 +1133,16 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
         taken.pop()
         removed = sum(len(s.encode("utf-8")) for s in taken)
         print("  [safety] keeping 1 section to avoid empty recent.md")
-    ```
+```
 
     **恢复方法：** 如果 recent.md 已被清空，从 Hermes 的 `state.db`（SQLite）重建：
     ```python
     import sqlite3, os
     from datetime import datetime
-    db = sqlite3.connect(f"file:{os.environ['USERPROFILE']}/AppData/Local/hermes/state.db?mode=ro", uri=True)
+    db = sqlite3.connect(f"file:{_H}/state.db?mode=ro", uri=True)
     sessions = db.execute("SELECT session_id, MAX(id) FROM messages GROUP BY session_id ORDER BY MAX(id) DESC LIMIT 20").fetchall()
     # ... 提取 user/assistant 对，按 `## {timestamp} | session={sid}` 格式写入 recent.md
-    ```
+```
     详见 `references/recover-recent-from-db.md`。
 
 32. **L3 清理必须彻底——一次完成，不要留尾巴**。用户对"只清理一部分"非常不满（"给我狠狠的压缩"）。清理 L3 时：
@@ -1057,11 +1156,12 @@ hermes skills publish --source ~/AppData/Local/hermes/skills/note-taking/memory-
 
 33. **L3 标签必须从摘要首句提取主题，不能用 `consolidated`**：`mem_consolidate.py` 写入 L3 时，标签由以下算法推导：
     ```python
-    first_line = cleaned.strip().split('\\n')[0][:60]
+    first_line = cleaned.strip().split('\
+')[0][:60]
     for pfx in ["- ", "• ", "关于", "本次", "会话"]:
         first_line = first_line[len(pfx):] if first_line.startswith(pfx) else first_line
     topic = first_line if len(first_line) > 4 else "summary"
-    ```
+```
     这使 L3 可按主题检索而非全是 `## consolidated`。如果未来要加退火或聚类标签，改 `mem_consolidate.py` 的这段 `extract topic` 逻辑即可。
 
 34. **记忆系统维护：批量发现 → 自省校验 → 批量修复**：当遇到记忆系统多个结构性问题时，正确的流程是：

@@ -211,11 +211,17 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
     _rebuild_assembly()
     
     # Return override_messages to replace session DB history with assembled memory.
+    # Strip SnowFox internal markers before sending to LLM.
     asm = _m() / "_assembled_context.md"
     if asm.exists():
         assembled_content = asm.read_text(encoding="utf-8", errors="replace")
+        # Remove _雪狐记录 lines and leading --- that separate entries
+        cleaned = re.sub(r'\n?---\n_雪狐记录[^\n]*\n?', '\n', assembled_content)
+        cleaned = re.sub(r'\n?---\n_雪狐记录[^\n]*_\n?', '\n', cleaned)
+        # Also clean up any orphaned empty lines
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         combined = (
-            f"{assembled_content}\n\n"
+            f"{cleaned}\n\n"
             f"---\n\n"
             f"## Current Turn\n\n"
             f"{kw.get('user_message', '')}"
