@@ -115,6 +115,11 @@ def compress():
 
     content = open(L1, "r", encoding="utf-8").read()
     hdr, secs = parse(content)
+    # Pass 1: reorder pending to front
+    pending_secs = [s for s in secs if " | pending" in s]
+    ok_secs = [s for s in secs if " | pending" not in s]
+    secs = pending_secs + ok_secs
+
     if not secs:
         print("  L1: no sections"); return
 

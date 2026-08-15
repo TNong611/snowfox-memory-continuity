@@ -26,18 +26,29 @@ SnowFox 的五级记忆架构让 AI 不用把整段历史对话都塞进上下�
 
 ```
 snowfox-memory-continuity/
-├── SKILL.md                         ← 面向 AI Agent 的一键部署 skill（v4.0.0）
+├── SKILL.md                         ← 面向 AI Agent 的一键部署 skill（v4.8.0）
 ├── README.md                        ← 本文档
 ├── 文章.md                           ← 面向人类的通俗讲解
 ├── plugins/
 │   └── snowfox-memory/              ← L1 写入 + 内联组装插件（pre/post/session_end 三钩子）
 │       ├── plugin.yaml              ← 插件定义（声明三钩子）
 │       └── __init__.py              ← 内联组装 + 写入 + CJK 防重
-└── scripts/
-    ├── mem_compress.py              ← L1→L2 压缩（recent.md → summary.md）
-    ├── mem_consolidate.py           ← L2→L3 合并（summary.md → long_term.md）
-    ├── mem_retire.py                ← L3→L4 退役（long_term.md → archive.md）
-    └── memory_maintenance.py        ← 三合一入口（cron 调用）
+├── scripts/
+│   ├── mem_compress.py              ← L1→L2 压缩（recent.md → summary.md）
+│   ├── mem_consolidate.py           ← L2→L3 合并（summary.md → long_term.md）
+│   ├── mem_retire.py                ← L3→L4 退役（long_term.md → archive.md）
+│   ├── memory_maintenance.py        ← 三合一入口（cron 调用）
+│   ├── mem_config.py                ← 容量参数集中配置（MAX/KEEP_KB）
+│   ├── mem_tasklog.py               ← 任务日志模块
+│   ├── l4_index.py / l4_search.py   ← L4 语义索引（TF-IDF）构建与检索
+│   ├── daily_tasklog_cleanup.sh     ← 每日 tasklog 压缩 cron
+│   ├── gateway_watchdog.sh          ← 网关看门狗
+│   ├── update_starfire.sh / patch_starfire.py ← 星火云端部署
+│   └── ocr_image.ps1                ← 图片 OCR（Windows）
+├── memories/                        ← 记忆文件快照（备份/移植源，运行时读写仍在 ~/AppData/Local/hermes/memories/）
+│   ├── fixed.md / recent.md / summary.md / long_term.md / archive.md / user.md / tasklog.md
+│   └── historical/                  ← 历史版本记忆快照归档
+└── hermes-fork/                     ← Hermes fork 源码副本（已废弃，gitignore 排除，可删）
 ```
 
 ## 快速部署
