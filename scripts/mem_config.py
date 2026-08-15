@@ -22,6 +22,12 @@ L3_KEEP_KB = 45     # Target: trim to ≤ this after retirement
 L4_MAX_KB = 0       # 0 = unlimited (no trigger)
 L4_KEEP_KB = 0      # 0 = unlimited (no trim)
 
+# ── Assembly injection budget (每轮注入 LLM 的记忆预算) ──
+# 背景：全量注入 154KB ≈ 5万+ token 曾致 DeepSeek 240s 断流。
+# 36KB 中文 ≈ 1.2 万 token；F0/USER 全量优先，L1/L2/L3 按权重分配。
+# 磁盘各层保留上限不变，此预算只约束「组装进 _assembled_context.md 的量」。
+ASSEMBLY_BUDGET_KB = 36
+
 
 def get_config() -> dict:
     """Return a snapshot dict for inspection / future dynamic loader."""

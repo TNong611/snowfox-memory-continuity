@@ -1133,3 +1133,39 @@ Nothing to save.
 用户多次要求主动更新技能库，优先级为：已加载技能→类级技能→添加支持文件→新建技能；需捕捉风格纠正、工作流修正、技术方案、技能缺陷等信号。关键决策：超限压缩策略改为L1保留45KB、其余压缩至L2，修复`_last_turn`未定义bug，需重启Gateway。用户与codex分工：用户负责指挥监督，codex负责代码实现。待解决问题：ccswitch开机弹窗、Clash代理致Codex断连、飞书账号断连。硬件配置：天选6 Pro为单条16GB DDR5-5600（Micron），有空槽，建议加装同规格内存组成32GB双通道；网卡为Realtek 8852CE（掉线重灾区），可换Intel AX210/AX211（注意CNVi插槽）；装Ubuntu建议留8GB swap。
 
 ---
+
+## 2026-08-15 10:50:05 | compressed-from-L1
+
+用户要求重建项目，并指定git clone deepseek-harness仓库，同步工具链与记忆组件，将记忆文件与组件统一放在D:\AI\snowfox便于维护移植。此前用户确认实机配置为1条16GB DDR5-5600内存（Micron颗粒），仅插1条，有空槽P1，助手修正了之前误报32G的错误。建议加装1条16GB DDR5-5600 SODIMM组成32GB双通道，混插需同频5600否则降频。因实际16G内存，装Ubuntu需留8GB swap供ROS2编译。网卡为Realtek 8852CE WiFi 6E，掉线频繁则换Intel AX210（CNVi槽需AX211），M.2 2230 Key E接口，¥45-70，可趁拆机加SSD时一并更换。另有技能库更新规则：优先更新已加载技能→类级技能→添加支持文件。超限压缩策略改为L1留45KB其余压至L2，修复_last_turn bug需重启Gateway。
+
+---
+
+## 2026-08-15 11:01:20 | compressed-from-L1
+
+Nothing to save.
+
+---
+
+## 2026-08-15 11:03:56 | compressed-from-L1
+
+用户要求克隆deepseek-harness并同步记忆组件，已克隆至D:\AI\deepseek-harness（需先启动Clash Verge，端口7897）。新建统一目录D:\AI\snowfox-memory存放组件与记忆文件，结构含SKILL.md、scripts/工具链、plugins-snowfox-memory/插件、memories/快照，并同步副本至harness下（已验证两目录一致）。用户随后要求同步新结构。后续对话涉及：技能库更新指令（优先更新已加载技能）；用户选择方案B；用户决定自己负责指挥监督、codex负责代码实现；反馈ccswitch开机弹窗、Clash挂代理致Codex断连、飞书连接断开等问题；L1达96KB未触发压缩，策略改为L1留45KB其余压缩至L2，修复_last_turn未定义bug需重启Gateway；实机内存为1条16GB DDR5-5600（非32G），建议加装1条16GB DDR5-5600 SODIMM达32GB双通道，装Ubuntu留8GB swap。
+
+---
+
+## 2026-08-15 11:11:25 | compressed-from-L1
+
+用户询问snowfox和snowfox-memory-continuity目录位置及harness打开方式，均未获回复。此前记录：飞书账号连接断开；用户要求主动审查对话更新技能库（优先更新已加载技能→类级技能→添加支持文件）；超限压缩策略改为L1留45KB其余压至L2，修复`_last_turn`未定义bug需重启Gateway；用户决定自己负责指挥监督，codex负责代码实现；反馈ccswitch开机弹窗、Clash挂代理致Codex断连问题待解决；用户偏好极简回复，直接给答案/命令/值。
+
+---
+
+## 2026-08-15 11:19:47 | compressed-from-L1
+
+用户询问是否需要下载 `npx @deepseek-ai/dsh web`，随后请求打开 "herness"，但对话中没有有效的技术细节或决策结论。
+
+---
+
+## 2026-08-15 11:20:34 | compressed-from-L1
+
+用户多次要求主动审查对话并更新技能库，优先更新已加载技能，其次类级技能，再添加支持文件，最后创建新技能；需捕捉风格纠正、工作流修正、技术技巧等信号。用户与codex协作，决定自己负责指挥、监督、检查、验证，codex负责具体代码实现。曾反馈Clash挂代理导致Codex断连、ccswitch开机弹窗问题待解决。超限压缩策略改为L1留45KB其余压缩至L2，修复`_last_turn`未定义bug，需重启Gateway。deepseek-harness项目pnpm install及build成功，构建产物含多个语言包，部分chunk超500kB有警告。用户询问过L1达96KB未触发压缩、飞书无响应、Hermes无法更新（选方案B）等问题。
+
+---

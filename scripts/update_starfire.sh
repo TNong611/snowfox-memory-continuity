@@ -4,7 +4,7 @@ patch -u ~/.hermes/plugins/snowfox-memory/memory_manager.py << 'PATCH'
 @@ -1,4 +1,4 @@
  """
  SnowFox 五级记忆管理器
- 
+
 @@ -13,16 +13,16 @@
  # ── 常量 ──────────────────────────────────────────────────────────
  DEFAULT_CAP = {
@@ -17,7 +17,7 @@ patch -u ~/.hermes/plugins/snowfox-memory/memory_manager.py << 'PATCH'
 +    "L2": 90 * 1024,       # 90KB (was 100KB)
 +    "L3": 45 * 1024,       # 45KB (was 50KB)
  }
- 
+
 -COMPRESS_AMOUNT = {
 -    "L1": 5 * 1024,        # 每次压缩5KB→L2
 -    "L2": 10 * 1024,       # 每次合并10KB→L3

@@ -14,8 +14,13 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from mem_config import L1_MAX_KB as MAX_L1_KB, L2_MAX_KB as MAX_L2_KB, L3_MAX_KB as MAX_L3_KB
+from mem_assembly import assemble_budgeted, clip
 
 logger = logging.getLogger("snowfox-memory")
+
+# 纪要化截断上限：User 保留前 300 字符，Assistant 保留前 600 字符
+_USER_LIMIT = 300
+_ASST_LIMIT = 600
 
 def _h(): return Path.home() / "AppData/Local/hermes"
 def _m(): return _h() / "memories"
@@ -69,35 +74,14 @@ def _read_or(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
 
 def _rebuild_assembly():
-    base = _h(); m = _m()
-    parts = []
-    build_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
-    parts.append(f"<!-- SnowFox Memory Assembly | built: {build_ts} -->")
-    parts.append("")
-    # 组装顺序：USER → F0 → L3 → L2 → L1（L4 使用语义索引检索）
-    s = _read_or(m / "user.md")
-    if s: parts.append(f"## USER\n{s}")
-    s = _read_or(m / "fixed.md")
-    if s: parts.append(f"## F0\n{s}")
-    s = _read_or(m / "long_term.md")
-    if s: parts.append(f"## L3\n{s}")
-    l2c = _read_or(m / "summary.md")
-    if l2c:
-        secs = l2c.split("\n## ")
-        kept = []; total = 0; limit = 90 * 1024
-        for sec in reversed(secs):
-            st = secs[0] if sec is secs[0] else "## " + sec
-            bs = len(st.encode("utf-8"))
-            if total + bs > limit and total > 0: break
-            kept.insert(0, st); total += bs
-        if kept: parts.append("## L2\n" + "\n".join(kept))
-    s = _read_or(m / "recent.md")
-    if s: parts.append(f"## L1\n{s}")
-    text = "\n\n".join(parts)
+    """预算制组装：F0/USER 全量，L1/L2/L3 按预算裁剪后写入 _assembled_context.md。
+    曾因全量注入 154KB（≈5万 token）导致 DeepSeek 240s 断流，预算制限制注入量。"""
+    m = _m()
+    text = assemble_budgeted(m)
     try:
         (m / "_assembled_context.md").write_text(text, encoding="utf-8")
-        (m / "_assembly_version.txt").write_text(build_ts, encoding="utf-8")
-        logger.info(f"[snowfox] assembly rebuilt: {len(text)}B")
+        (m / "_assembly_version.txt").write_text(datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z"), encoding="utf-8")
+        logger.info(f"[snowfox] assembly rebuilt (budget): {len(text)}B = {len(text)/1024:.1f}KB")
     except Exception as e:
         logger.error(f"[snowfox] assembly write failed: {e}")
 
@@ -137,11 +121,14 @@ def _last_entry_fp(p: Path) -> str:
     return str(hash(secs[-1][:100]))
 
 def _build_entry(user_msg: str, asst_msg: str, session_id: str, pending: bool = False) -> str:
+    """纪要化条目：User/Assistant 全文截断后写入（stock Hermes 会话历史自带全文，
+    L1 只存结构化纪要，避免双份冗余占窗口）。"""
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     status = " | pending" if pending else ""
-    asst = "_等待回复..._" if pending else asst_msg
+    asst = "_等待回复..._" if pending else clip(asst_msg, _ASST_LIMIT)
     pending_suffix = " | pending_" if pending else ""
-    return f"## {ts} | session={session_id}{status}\n\n### User\n\n{user_msg}\n\n### Assistant\n\n{asst}\n\n---\n_雪狐记录 | session={session_id}{pending_suffix}\n"
+    u = clip(user_msg, _USER_LIMIT)
+    return f"## {ts} | session={session_id}{status} | 纪要\n\n**User**: {u}\n\n**Assistant**: {asst}\n\n---\n_雪狐记录 | session={session_id}{pending_suffix}\n"
 
 def _write_recent(user_msg: str, asst_msg: str, session_id: str):
     p = _h() / "memories/recent.md"
@@ -211,7 +198,7 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
         _write_pending(pu, session_id)
     _rebuild_assembly()
     _compress_l1_if_overflow()  # pre_llm 返回 override 后 post_llm/session_end 不触发，这里兜底
-    
+
     # Return override_messages to replace session DB history with assembled memory.
     # Strip SnowFox internal markers before sending to LLM.
     asm = _m() / "_assembled_context.md"

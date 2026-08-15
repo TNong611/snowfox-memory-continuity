@@ -1,66 +1,64 @@
-# SnowFox 五级记忆连续性
+# SnowFox Memory 统一包
 
-> **会话框仅用于显示，输入 = 组装记忆 + 当前消息** — 一个零成本无限聊天框的设计
-
----
-
-[📖 文章](文章.md) · [🤖 SKILL.md](SKILL.md) · [🔌 插件](plugins/snowfox-memory/) · [📜 维护脚本](scripts/)
-
-## 是什么
-
-SnowFox 的五级记忆架构让 AI 不用把整段历史对话都塞进上下文窗口，而是通过 `F0 → L1 → L2 → L3 → L4` 的层级记忆压缩管道，只保留最关键的信息。**会话框可以无限膨胀而不消耗 token。**
-
-## 核心组件
-
-| 层级 | 文件 | 容量 | 超限后 | 内容 |
-|------|------|------|--------|------|
-| **SOUL** | SOUL.md | — | — | 系统行为规范（含"禁止 read_file"） |
-| **USER** | user.md | 独立 | 不压缩 | 用户身份/偏好/环境 |
-| **L4** | archive.md | 无限 | 不载入 | 退役历史归档 |
-| **F0** | fixed.md | 10KB | 永不压缩 | 待办/重要指令 |
-| **L3** | long_term.md | 50KB | 移最旧 5KB → L4 | 跨会话核心知识 |
-| **L2** | summary.md | 100KB | 移最旧 10KB → L3 | 压缩后摘要 |
-| **L1** | recent.md | 50KB | 移最旧 5KB → L2 | 最近完整对话 |
+记忆组件 + 记忆文件放一起，便于维护与移植。
 
 ## 目录结构
 
 ```
-snowfox-memory-continuity/
-├── SKILL.md                         ← 面向 AI Agent 的一键部署 skill（v4.8.0）
-├── README.md                        ← 本文档
-├── 文章.md                           ← 面向人类的通俗讲解
-├── plugins/
-│   └── snowfox-memory/              ← L1 写入 + 内联组装插件（pre/post/session_end 三钩子）
-│       ├── plugin.yaml              ← 插件定义（声明三钩子）
-│       └── __init__.py              ← 内联组装 + 写入 + CJK 防重
-├── scripts/
-│   ├── mem_compress.py              ← L1→L2 压缩（recent.md → summary.md）
-│   ├── mem_consolidate.py           ← L2→L3 合并（summary.md → long_term.md）
-│   ├── mem_retire.py                ← L3→L4 退役（long_term.md → archive.md）
-│   ├── memory_maintenance.py        ← 三合一入口（cron 调用）
-│   ├── mem_config.py                ← 容量参数集中配置（MAX/KEEP_KB）
-│   ├── mem_tasklog.py               ← 任务日志模块
-│   ├── l4_index.py / l4_search.py   ← L4 语义索引（TF-IDF）构建与检索
-│   ├── daily_tasklog_cleanup.sh     ← 每日 tasklog 压缩 cron
-│   ├── gateway_watchdog.sh          ← 网关看门狗
-│   ├── update_starfire.sh / patch_starfire.py ← 星火云端部署
-│   └── ocr_image.ps1                ← 图片 OCR（Windows）
-├── memories/                        ← 记忆文件快照（备份/移植源，运行时读写仍在 ~/AppData/Local/hermes/memories/）
-│   ├── fixed.md / recent.md / summary.md / long_term.md / archive.md / user.md / tasklog.md
-│   └── historical/                  ← 历史版本记忆快照归档
-└── hermes-fork/                     ← Hermes fork 源码副本（已废弃，gitignore 排除，可删）
+snowfox-memory/
+├── SKILL.md                    # memory-continuity 技能（一键部署+维护）
+├── scripts/                    # 工具链（mem_*.py 级联压缩、l4_*.py 语义索引）
+│   ├── mem_config.py           # 容量参数集中配置（L1:50→45KB, L2:100→90KB, L3:50→45KB）
+│   ├── mem_compress.py         # L1→L2（LLM 摘要）
+│   ├── mem_consolidate.py      # L2→L3（LLM 二次蒸馏，去空去重去时间戳）
+│   ├── mem_retire.py           # L3→L4（纯搬运）
+│   ├── mem_maintain.py         # 级联维护 wrapper
+│   ├── memory_maintenance.py   # 手动维护 + 组装上下文
+│   ├── mem_tasklog.py          # 任务日志模块
+│   ├── l4_index.py / l4_search.py  # L4 TF-IDF 语义索引
+│   └── ...（含 .sh/.ps1 辅助脚本）
+├── plugins-snowfox-memory/     # Hermes 插件（pre/post/session_end 三钩子，写入即触发压缩）
+├── dsh-plugin/                 # DSH → Hermes 记忆桥接插件（snowfox-sync.mjs）
+└── memories/                   # 记忆文件快照
+    ├── fixed.md                # F0 固定记忆（永不压缩）
+    ├── recent.md               # L1 完整近期对话
+    ├── summary.md              # L2 中期摘要
+    ├── long_term.md            # L3 长期记忆
+    ├── archive.md              # L4 归档
+    ├── user.md / USER.md       # 用户画像
+    ├── tasklog.md              # 任务日志
+    └── _assembled_context.md   # 组装上下文快照
 ```
 
-## 快速部署
+## 同步到 Hermes
 
-在 Hermes Agent 中加载 SKILL.md 即可一键部署：
-
+```bash
+# 工具链 → 运行目录
+cp -r scripts/* ~/AppData/Local/hermes/scripts/
+# 插件
+cp -r plugins-snowfox-memory ~/AppData/Local/hermes/plugins/snowfox-memory
 ```
-skill_view(name='memory-continuity')
+
+## 默认位置：DeepSeek Harness
+
+记忆组件默认位于 `D:\AI\deepseek-harness\snowfox-memory`（git 跟踪，随仓库版本化）。
+`D:\AI\snowfox-memory` 为运行时工作副本（junction 真源指向其 `memories/`）。
+
+```bash
+cd /d/AI/deepseek-harness
+git add snowfox-memory
+git commit -m "chore: sync snowfox-memory"
 ```
 
-加载后自动检查部署状态，缺失组件自动创建补齐。
+## 记忆文件唯一真源（junction）
 
----
+Hermes 的 `~/AppData/Local/hermes/memories` 是指向 `D:\AI\snowfox-memory\memories` 的 **junction**，
+运行中的 Hermes（内置 memory 工具、snowfox-memory 插件、mem_*.py 脚本）全部读写本目录。
 
-*作者：tnong & 雪狐 🦊 · 2026*
+```powershell
+# 重建 junction（如丢失）
+Remove-Item "C:\Users\tnong\AppData\Local\hermes\memories" -Force
+New-Item -ItemType Junction -Path "C:\Users\tnong\AppData\Local\hermes\memories" -Target "D:\AI\snowfox-memory\memories"
+```
+
+harness 侧为组件默认位置；`memories/` 是运行时快照，随提交更新，如需单独备份用 `cp -r memories/` 复制即可。

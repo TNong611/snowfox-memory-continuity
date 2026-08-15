@@ -47,29 +47,16 @@ def read_md_sections(filepath, limit_kb=0, section_chars=0):
     return "\n".join(sections)
 
 def assemble_context():
-    """Build _assembled_context.md with version header.
+    """Build _assembled_context.md with version header under injection budget.
     The build timestamp ensures every rebuild produces unique content,
-    preventing the Hermes read_file dedup loop."""
-    parts = []
-    build_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
-    parts.append(f'<!-- SnowFox Memory Assembly | built: {build_ts} -->')
-    parts.append("")
-    s = read_md("../SOUL.md", "## self")
-    if s: parts.append(s)
-    s = read_md("fixed.md", "## F0")
-    if s: parts.append(s)
-    s = read_md("long_term.md", "## L3")
-    if s: parts.append(s)
-    s = read_md("user.md", "## USER")
-    if s: parts.append(s)
-    s = read_md_sections("summary.md", limit_kb=90, section_chars=150)
-    if s: parts.append(f"## L2\n{s}")
-    s = read_md("recent.md", "## L1")
-    if s: parts.append(s)
+    preventing the Hermes read_file dedup loop. Budget caps total injected
+    size (was 154KB ≈ 50K tokens → DeepSeek 240s stall)."""
+    import mem_assembly
+    from mem_config import ASSEMBLY_BUDGET_KB
+    text = mem_assembly.assemble_budgeted(M, budget_kb=ASSEMBLY_BUDGET_KB)
     out = M / "_assembled_context.md"
-    text = "\n\n".join(parts)
     out.write_text(text, encoding="utf-8")
-    print(f"OK: {out.name} {len(text)}B (build: {build_ts})")
+    print(f"OK: {out.name} {len(text)}B = {len(text)/1024:.1f}KB (budget {ASSEMBLY_BUDGET_KB}KB, build: {datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z')})")
 
 if __name__ == "__main__":
     # L1→L2 compress is now inline (triggered by plugin on write overflow)

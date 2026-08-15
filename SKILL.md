@@ -1,4 +1,4 @@
-﻿---
+---
 name: memory-continuity
 description: "SnowFox 五级记忆 —— 一键部署 + 日常维护。加载此 skill 后自动检查部署状态，缺失组件自动补齐。"
 version: 4.8.0
@@ -93,7 +93,7 @@ logger = logging.getLogger("snowfox-memory")
 
 def _h():
     return Path(os.environ.get('HERMES_HOME') or (
-        Path.home() / 'AppData' / 'Local' / 'hermes' if os.name == 'nt' 
+        Path.home() / 'AppData' / 'Local' / 'hermes' if os.name == 'nt'
         else Path.home() / '.hermes'
     ))
 def _m(): return _h() / "memories"
@@ -625,10 +625,10 @@ L3 > 50KB → 砍到 45KB，移出段纯搬运→L4
 
 **⚠️ 触发器 = `MAX_KB`（上限），保持目标 = `KEEP_KB`。** 检查条件是 `if sz <= MAX_KB`（例如 50KB）判断是否无需操作。超 `MAX_KB` 后砍到 ≤`KEEP_KB`（45KB）。二者并不相同——文件在 `KEEP_KB` 和 `MAX_KB` 之间的区间内被视为正常无需压缩。打印信息同时显示两个值：`no action needed (target ≤{KEEP_KB}KB)`。
 
-**⚠️ 全部层级：事件驱动（插件写入时即时触发），cron 可选兜底（每 10 分钟巡检）。**  
-L1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。  
-L2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。  
-L3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。  
+**⚠️ 全部层级：事件驱动（插件写入时即时触发），cron 可选兜底（每 10 分钟巡检）。**\
+L1→L2 由插件在写入后立即检查大小，超限当场调 `mem_compress.py`。
+L2→L3 由 `mem_compress.py` 写入 summary.md 后检查，超限级联调 `mem_consolidate.py`。
+L3→L4 由 `mem_consolidate.py` 写入 long_term.md 后检查，超限级联调 `mem_retire.py`。
 整条链从插件写入开始逐级传递，同时 cron 每 10 分钟跑一次 mem_maintain.py 可选兜底。
 
 ## 🧹 定期清理
@@ -948,7 +948,7 @@ hermes skills publish --source ${HERMES_HOME}/skills/note-taking/memory-continui
     - **SKILL.md 内联插件代码**（plugin __init__.py 片段）
     - **`${HERMES_HOME}/scripts/`**（cron 实际执行）
     - **`D:\\AI\\snowfox-memory-continuity\\scripts/`** 和 **`D:\\AI\\snowfox-memory-continuity\\plugins/`**（GitHub 项目仓库）
-    
+
     2026-06-29 修订：L1 压缩改为插件内联触发（事件驱动），cron 不再跑 compress。修改后必须同步：
     - 修改 SKILL.md 内联脚本和插件代码 → 手动复制到 `${HERMES_HOME}/scripts/`、`${HERMES_HOME}/plugins/` 和项目仓库
     - 修改运行版 → 复制回 SKILL.md 内联脚本 + 插件代码 + 项目仓库
@@ -993,7 +993,7 @@ hermes skills publish --source ${HERMES_HOME}/skills/note-taking/memory-continui
     ```python
     # conversation_loop.py SnowFox block
     api_messages = []  # Clear everything — assembly-only
-    
+
     # Extract current user message
     for idx, msg in enumerate(messages):
         if idx == current_turn_user_idx and msg.get("role") == "user":
@@ -1009,7 +1009,7 @@ hermes skills publish --source ${HERMES_HOME}/skills/note-taking/memory-continui
 {_snowfox_current_user}\
 \
 ---"
-    
+
     # System prompt = cached (old assembly) + ephemeral (current user input)
     effective_system = active_system_prompt or ""
     if agent.ephemeral_system_prompt:

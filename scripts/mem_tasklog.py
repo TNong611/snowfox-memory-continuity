@@ -64,7 +64,7 @@ def compress_yesterday_to_fixed():
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     content = open(tasklog, "r", encoding="utf-8").read()
     sections = content.split("\n## ")
-    
+
     yday_section = None
     remaining = []
     for sec in sections:
@@ -84,7 +84,7 @@ def compress_yesterday_to_fixed():
     summary_lines = [l for l in lines if l.strip() and not l.startswith("#") and not l.startswith("_")]
     compressed = "\n".join(summary_lines[:40])
     compressed_bytes = len(compressed.encode("utf-8"))
-    
+
     # If still > 7KB, truncate further
     if compressed_bytes > 7 * 1024:
         compressed = compressed[:7000] + "\n…[truncated to ~7KB]"
@@ -95,14 +95,14 @@ def compress_yesterday_to_fixed():
     os.makedirs(os.path.dirname(fixed), exist_ok=True)
     with open(fixed, "a", encoding="utf-8") as f:
         f.write(entry)
-    
+
     # Trim F0 to ≤7KB
     _trim_fixed_to_7kb(fixed)
-    
+
     # Remove yesterday's section from tasklog
     with open(tasklog, "w", encoding="utf-8") as f:
         f.write("\n## ".join(remaining))
-    
+
     print(f"  tasklog: {yesterday} compressed → F0 ({compressed_bytes}B)")
 
 def _trim_fixed_to_7kb(path: str):
@@ -134,12 +134,12 @@ def init_workspace():
     today_dir = f"{WORK}/{today}"
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     yesterday_dir = f"{WORK}/{yesterday}"
-    
+
     # Clean yesterday's workspace
     if os.path.exists(yesterday_dir):
         shutil.rmtree(yesterday_dir)
         print(f"  workspace: cleaned {yesterday}")
-    
+
     # Create today's
     os.makedirs(today_dir, exist_ok=True)
     print(f"  workspace: ready → {today_dir}")
