@@ -28,6 +28,12 @@ L4_KEEP_KB = 0      # 0 = unlimited (no trim)
 # 磁盘各层保留上限不变，此预算只约束「组装进 _assembled_context.md 的量」。
 ASSEMBLY_BUDGET_KB = 36
 
+# L4 语义检索注入预算（KB）：预留给每轮自动 l4_search 结果的量
+L4_INJECT_KB = 2
+
+# 组装权重：L1(近期纪要) > L2(中期摘要) > L3(长期记忆)
+ASSEMBLY_WEIGHTS = {"L1": 5, "L2": 3, "L3": 2}
+
 
 def get_config() -> dict:
     """Return a snapshot dict for inspection / future dynamic loader."""
@@ -36,6 +42,11 @@ def get_config() -> dict:
         "L2":   {"max_kb": L2_MAX_KB,   "keep_kb": L2_KEEP_KB},
         "L3":   {"max_kb": L3_MAX_KB,   "keep_kb": L3_KEEP_KB},
         "L4":   {"max_kb": L4_MAX_KB,   "keep_kb": L4_KEEP_KB},
+        "assembly": {
+            "budget_kb": ASSEMBLY_BUDGET_KB,
+            "l4_inject_kb": L4_INJECT_KB,
+            "weights": ASSEMBLY_WEIGHTS,
+        },
     }
 
 

@@ -7,7 +7,7 @@ from datetime import datetime
 import requests
 from mem_config import L1_MAX_KB as MAX_KB, L1_KEEP_KB as KEEP_KB, L2_MAX_KB
 
-HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+HH = os.environ.get("HERMES_HOME") or os.environ["USERPROFILE"] + "/AppData/Local/hermes"
 L1 = HH + "/memories/recent.md"
 SUM = HH + "/memories/summary.md"
 
@@ -21,7 +21,17 @@ def _api_key() -> str:
             line = line.strip()
             if line.startswith("DEEPSEEK_API_KEY=") and len(line) > 20:
                 k = line.split("=", 1)[1].strip("\"'")
-                break
+                if k: return k
+    except Exception:
+        pass
+    # auth.json 回退（与 mem_consolidate 一致）
+    auth_file = HH + "/auth.json"
+    try:
+        import json
+        auth = json.load(open(auth_file, "r"))
+        pool = auth.get("credential_pool", {}).get("deepseek", [])
+        if pool and pool[0].get("value"):
+            return pool[0]["value"]
     except Exception:
         pass
     return k or ""

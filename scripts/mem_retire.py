@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from mem_config import L3_MAX_KB as MAX_KB, L3_KEEP_KB as KEEP_KB
 
-HH = os.environ["USERPROFILE"] + "/AppData/Local/hermes"
+HH = os.environ.get("HERMES_HOME") or os.environ["USERPROFILE"] + "/AppData/Local/hermes"
 L3 = HH + "/memories/long_term.md"
 ARC = HH + "/memories/archive.md"
 

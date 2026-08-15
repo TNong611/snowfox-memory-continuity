@@ -12,12 +12,20 @@ token 估算：CJK 1 字 ≈ 1 token，其余 4 字符 ≈ 1 token（DeepSeek �
 """
 from pathlib import Path
 
-# 默认注入预算（KB）；与 mem_config.ASSEMBLY_BUDGET_KB 保持一致
-DEFAULT_BUDGET_KB = 36
-# 权重：L1(近期纪要) > L2(中期摘要) > L3(长期记忆)
-L1_WEIGHT = 5
-L2_WEIGHT = 3
-L3_WEIGHT = 2
+# 默认注入预算（KB）与权重：单一真源在 mem_config.py，此处仅兜底
+try:
+    from mem_config import ASSEMBLY_BUDGET_KB as DEFAULT_BUDGET_KB
+    from mem_config import ASSEMBLY_WEIGHTS as _WEIGHTS
+    from mem_config import L4_INJECT_KB as L4_BUDGET_KB
+    L1_WEIGHT = _WEIGHTS["L1"]
+    L2_WEIGHT = _WEIGHTS["L2"]
+    L3_WEIGHT = _WEIGHTS["L3"]
+except Exception:
+    DEFAULT_BUDGET_KB = 36
+    L1_WEIGHT = 5
+    L2_WEIGHT = 3
+    L3_WEIGHT = 2
+    L4_BUDGET_KB = 2
 
 
 def clip(text: str, limit: int) -> str:
@@ -88,11 +96,12 @@ def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
 
 
-def assemble_budgeted(m: Path, budget_kb: int = DEFAULT_BUDGET_KB) -> str:
+def assemble_budgeted(m: Path, budget_kb: int = DEFAULT_BUDGET_KB, l4_hits: list | None = None) -> str:
     """按预算组装五级记忆，返回完整文本（含版本头）。
 
-    顺序：USER → F0 → L3 → L2 → L1（与历史组装顺序一致）。
-    L3 保留头部（长期沉淀），L2/L1 保留尾部（近期信息）。
+    顺序：USER → F0 → L3 → L2 → L1 → L4 检索（如有命中）。
+    L3 保留头部（最早沉淀的核心事实），L2/L1 保留尾部（近期信息）。
+    l4_hits: l4_search 结果（[{title,score,snippet}]），按 L4 预算追加到末尾。
     """
     from datetime import datetime
 
@@ -105,7 +114,18 @@ def assemble_budgeted(m: Path, budget_kb: int = DEFAULT_BUDGET_KB) -> str:
     overhead = 400  # 版本头 + 各层标题 + 分隔符，约 0.4KB
     budget = budget_kb * 1024
     used = len(user_s.encode("utf-8")) + len(fixed_s.encode("utf-8")) + overhead
-    remain = max(budget - used, 0)
+
+    # L4 检索结果：按注入量预留预算（上限 L4_BUDGET_KB），从 L1/L2/L3 份额中预扣
+    l4_sec = ""
+    if l4_hits:
+        lines = []
+        for h in l4_hits[:5]:
+            title = str(h.get("title", "")).strip() or "(untitled)"
+            snippet = " ".join(str(h.get("snippet", "")).split())
+            lines.append(f"- **{title}**: {snippet[:120]}")
+        l4_sec = "## L4 检索\n" + "\n".join(lines)
+    l4_reserve = min(len(l4_sec.encode("utf-8")), L4_BUDGET_KB * 1024) if l4_sec else 0
+    remain = max(budget - used - l4_reserve, 0)
 
     total_w = L1_WEIGHT + L2_WEIGHT + L3_WEIGHT
     l3_b = int(remain * L3_WEIGHT / total_w)
@@ -131,6 +151,8 @@ def assemble_budgeted(m: Path, budget_kb: int = DEFAULT_BUDGET_KB) -> str:
         _, secs = parse_sections(l1_s)
         if secs:
             parts.append("## L1\n" + _take_newest(secs, l1_b))
+    if l4_sec:
+        parts.append(l4_sec)
 
     return "\n\n".join(parts)
 

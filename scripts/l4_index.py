@@ -11,8 +11,6 @@ META = HH + "/memories/archive.meta.json"
 
 def parse(content: str) -> list[dict]:
     """解析 archive.md 为带标题的段列表。"""
-    from sklearn.feature_extraction.text import TfidfVectorizer
-
     lines = content.split("\n")
     sections = []
     cur_title = "(header)"
@@ -46,6 +44,8 @@ def parse(content: str) -> list[dict]:
 def build():
     if not os.path.exists(ARC):
         print("L4 index: archive.md not found"); return
+    # sklearn 惰性导入：仅 build 需要，避免无 sklearn 环境 import 失败
+    from sklearn.feature_extraction.text import TfidfVectorizer
 
     content = open(ARC, encoding="utf-8").read()
     sections = parse(content)
