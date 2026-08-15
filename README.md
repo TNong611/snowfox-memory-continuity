@@ -41,14 +41,18 @@ cp -r plugins-snowfox-memory ~/AppData/Local/hermes/plugins/snowfox-memory
 
 ## 默认位置：DeepSeek Harness
 
-记忆组件默认位于 `D:\AI\deepseek-harness\snowfox-memory`（git 跟踪，随仓库版本化）。
-`D:\AI\snowfox-memory` 为运行时工作副本（junction 真源指向其 `memories/`）。
+记忆组件默认随仓库走：`deepseek-harness/snowfox-memory`（git 跟踪、整体可移植，不写死机器路径）。
+本机运行时工作副本位于 `D:\AI\snowfox-memory`（junction 真源指向其 `memories/`）。
 
 ```bash
-cd /d/AI/deepseek-harness
+cd deepseek-harness   # 仓库根（任意机器/盘符）
 git add snowfox-memory
 git commit -m "chore: sync snowfox-memory"
 ```
+
+## 同步到 GitHub
+
+远程仓库：`https://github.com/TNong611/snowfox-memory-continuity`（main 分支），内容与本组件保持一致。
 
 ## 记忆文件唯一真源（junction）
 
