@@ -10,10 +10,12 @@ M = Path(os.environ.get("HERMES_HOME", Path.home() / "AppData" / "Local" / "herm
 SCRIPTS = Path(os.environ.get("HERMES_HOME", Path.home() / "AppData" / "Local" / "hermes")) / "scripts"
 
 def run_script(name):
-    s = SCRIPTS / name
+    parts = name.split()
+    s = SCRIPTS / parts[0]
     if not s.exists():
         print(f"WARN: {s} not found"); return
-    r = os.popen(f'"{sys.executable}" "{s}" 2>&1').read()
+    cmd = f'"{sys.executable}" "{s}" {" ".join(parts[1:])} 2>&1'
+    r = os.popen(cmd).read()
     print(f"[{name}] {r[:200].strip()}")
 
 def read_md(filepath, heading=""):
@@ -62,4 +64,5 @@ if __name__ == "__main__":
     # L1→L2 compress is now inline (triggered by plugin on write overflow)
     run_script("mem_consolidate.py")
     run_script("mem_retire.py")
+    run_script("mem_dedupe.py --apply")
     assemble_context()

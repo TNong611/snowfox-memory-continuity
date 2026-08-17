@@ -275,6 +275,9 @@ def _on_pre_llm_call(session_id="", task_id="", turn_id="", conversation_history
     asm = _m() / "_assembled_context.md"
     if asm.exists():
         assembled_content = asm.read_text(encoding="utf-8", errors="replace")
+        # 剥离首行 built 时间戳注释：每次重建都变，保留会让 prompt 前缀全失效
+        # （与 DSH snowfox-inject.mjs 一致），缓存命中率被拖到 0~65%。
+        assembled_content = re.sub(r'^<!-- SnowFox Memory Assembly \| built: [^\n]* -->\r?\n?', '', assembled_content)
         # Remove _雪狐记录 lines and leading --- that separate entries
         cleaned = re.sub(r'\n?---\n_雪狐记录[^\n]*\n?', '\n', assembled_content)
         cleaned = re.sub(r'\n?---\n_雪狐记录[^\n]*_\n?', '\n', cleaned)

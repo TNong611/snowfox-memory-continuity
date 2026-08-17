@@ -54,8 +54,9 @@ for name in ["fixed.md", "recent.md", "summary.md", "long_term.md", "archive.md"
 **scripts/mem_compress.py** — L1→L2 压缩 + 级联检查 L2（见 `references/cascade-chain.md`）
 **scripts/mem_consolidate.py** — L2→L3 合并（LLM 二次压缩，去空去重去时间戳）+ 级联检查 L3
 **scripts/mem_retire.py** — L3→L4 退役（末端，无级联）
-**scripts/mem_maintain.py** — 全级维护 wrapper（串行调用以上三个脚本，供 cron 使用）
-**scripts/memory_maintenance.py** — 手动维护工具（consolidate+retire+assembly，不跑 compress）
+**scripts/mem_dedupe.py** — L3/L4 重复记忆合并（相似条目 → 同一条 + 【重复×N】权重标记，高重复排前优先注入；`--apply` 生效，默认 dry-run）
+**scripts/mem_maintain.py** — 全级维护 wrapper（串行调用以上脚本，供 cron 使用）
+**scripts/memory_maintenance.py** — 手动维护工具（consolidate+retire+dedupe+assembly，不跑 compress）
 
 脚本代码见本 skill 的 `scripts/` 引用文件。如果引用文件不存在，直接使用此说明文档中内联的简化脚本（见本文档末尾「内联脚本」章节）。
 

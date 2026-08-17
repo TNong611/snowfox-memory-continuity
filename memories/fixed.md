@@ -10,6 +10,12 @@ _1 条，永不压缩 | 上限 10KB_
 
 ---
 
+## 2026-08-17 固定规则
+
+每次执行任务前，先检查当前运行系统（Windows / Ubuntu / 其他），确认路径、命令、记忆文件位置与当前系统匹配后再动手。双系统下 Windows 路径（C:\、盘符）与 Ubuntu 路径（/home/、挂载点）不互通。
+
+---
+
 写代码分工：雪狐负责指挥、监督、检查、验证；Codex CLI 负责具体代码实现。雪狐规划结构后派 Codex 写，写完 review 再合入。
 
 Codex 502 with custom provider (ccswitch): Clash global 模式 + 系统代理开启时, localhost 流量被 Clash 劫持转发到代理节点 → Python ccswitch 不兼容代理协议 → 502。修复: verge.yaml 加 system_proxy_bypass=localhost;127.*;192.168.*;10.*;::1 让 Windows 系统代理绕过本地回环。Clash 规则已有 IP-CIDR,127.0.0.0/8,🎯 国内流量, 但 global 模式下规则不生效, bypass 才是关键。

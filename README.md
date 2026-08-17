@@ -12,6 +12,7 @@ snowfox-memory/
 │   ├── mem_compress.py         # L1→L2（LLM 摘要）
 │   ├── mem_consolidate.py      # L2→L3（LLM 二次蒸馏，去空去重去时间戳）
 │   ├── mem_retire.py           # L3→L4（纯搬运）
+│   ├── mem_dedupe.py           # L3/L4 重复记忆合并 + 权重标记（默认 dry-run，--apply 生效）
 │   ├── mem_maintain.py         # 级联维护 wrapper
 │   ├── memory_maintenance.py   # 手动维护 + 组装上下文
 │   ├── mem_tasklog.py          # 任务日志模块

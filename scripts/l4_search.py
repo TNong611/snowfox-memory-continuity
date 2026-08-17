@@ -1,4 +1,5 @@
-"""L4 语义检索 — 对 archive.md 进行 TF-IDF 语义搜索。"""
+"""L4 语义检索 — 对 archive.md 进行 TF-IDF 语义搜索。
+score = cosine_similarity × 权重（重复合并记忆权重更高，来自 l4_index 的 meta.json）。"""
 
 import json, os, pickle, sys
 from pathlib import Path
@@ -26,10 +27,13 @@ def search(query: str, top_k: int = 5) -> list[dict]:
     with open(META, "r", encoding="utf-8") as f:
         meta = json.load(f)
     titles = meta["titles"]
+    weights = meta.get("weights", [1.0] * len(titles))
 
     # vectorize query
     qv = vectorizer.transform([query])
     sims = cosine_similarity(qv, matrix)[0]
+    # 加权：重复合并过的记忆排位更高
+    sims = [sims[i] * (weights[i] if i < len(weights) else 1.0) for i in range(len(sims))]
 
     # get top_k results
     pairs = [(i, sims[i]) for i in range(len(sims))]
